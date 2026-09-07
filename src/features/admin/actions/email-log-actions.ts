@@ -9,6 +9,7 @@ import { createResendEmailLog } from "@/features/admin/actions/email-log-resend"
 import { requireAdminArea } from "@/lib/auth/session";
 import { manuallyResolveEmailIncident } from "@/lib/email/incident-resolution";
 import { prisma } from "@/lib/prisma";
+import { requeuePendingEmailLog } from "@/features/admin/lib/email-log-requeue";
 import { getEmailBrandingSettings } from "@/lib/site-settings";
 
 const emailLogActionSchema = z.object({
@@ -103,22 +104,11 @@ export async function retryEmailLogAction(formData: FormData) {
     redirect(`/admin/email-logy/${createdEmailLog.id}?flash=resend-success`);
   }
 
-  await prisma.emailLog.update({
-    where: {
-      id: emailLog.id,
-    },
-    data: {
-      status: EmailLogStatus.PENDING,
-      nextAttemptAt: new Date(),
-      processingStartedAt: null,
-      processingToken: null,
-      errorMessage: null,
-    },
-  });
+  const requeued = await requeuePendingEmailLog(emailLog, true);
 
   revalidatePath("/admin/email-logy");
   revalidatePath(`/admin/email-logy/${emailLog.id}`);
-  redirect(`/admin/email-logy/${emailLog.id}?flash=retry-success`);
+  redirect(`/admin/email-logy/${emailLog.id}?flash=${requeued ? "retry-success" : "job-changed"}`);
 }
 
 export async function releaseStuckEmailLogAction(formData: FormData) {
@@ -132,21 +122,11 @@ export async function releaseStuckEmailLogAction(formData: FormData) {
     redirect("/admin/email-logy");
   }
 
-  await prisma.emailLog.update({
-    where: {
-      id: emailLog.id,
-    },
-    data: {
-      status: EmailLogStatus.PENDING,
-      nextAttemptAt: new Date(),
-      processingStartedAt: null,
-      processingToken: null,
-    },
-  });
+  const requeued = await requeuePendingEmailLog(emailLog, false);
 
   revalidatePath("/admin/email-logy");
   revalidatePath(`/admin/email-logy/${emailLog.id}`);
-  redirect(`/admin/email-logy/${emailLog.id}?flash=release-success`);
+  redirect(`/admin/email-logy/${emailLog.id}?flash=${requeued ? "release-success" : "job-changed"}`);
 }
 
 export async function resendEmailLogAction(formData: FormData) {

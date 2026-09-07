@@ -2,8 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { CalendarFeedScope, SiteSettingsChangeOperation } from "@/generated/prisma/browser";
-import { type Prisma } from "@/generated/prisma/client";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { env } from "@/config/env";
@@ -30,6 +28,7 @@ import { sendDirectOwnerPushover } from "@/lib/notifications/pushover";
 import { updateSiteSettingsWithAudit } from "@/features/admin/lib/site-settings-audit";
 import { isPublicMediaAsset } from "@/features/media/lib/public-media-asset";
 import { isValidDateKey } from "@/features/admin/lib/admin-slots/time";
+import { persistAutoLunchDayMode } from "@/features/admin/lib/admin-auto-lunch";
 import { runSerializableTransaction } from "@/lib/serializable-transaction";
 
 import { type UpdateBookingSettingsActionState } from "./update-booking-settings-action-state";
@@ -288,36 +287,6 @@ export async function updateBookingSettingsAction(
     status: "success",
     successMessage: "Globální pravidla rezervace jsou uložená.",
   };
-}
-
-export async function persistAutoLunchDayMode(
-  tx: Prisma.TransactionClient,
-  input: { area: AdminArea; dateKey: string; mode: "AUTO" | "OFF"; actor: { id: string; role: "OWNER" | "SALON" } },
-) {
-    const previous = await tx.autoLunchDayOverride.findUnique({ where: { dateKey: input.dateKey } });
-
-    if ((input.mode === "OFF") === Boolean(previous)) {
-      return false;
-    }
-
-    if (input.mode === "OFF") {
-      await tx.autoLunchDayOverride.upsert({
-        where: { dateKey: input.dateKey },
-        create: { dateKey: input.dateKey, updatedByUserId: input.actor.id },
-        update: { updatedByUserId: input.actor.id },
-      });
-    } else {
-      await tx.autoLunchDayOverride.delete({ where: { dateKey: input.dateKey } });
-    }
-
-    await tx.availabilityAuditEvent.create({ data: {
-      actorUserId: input.actor.id, actorRole: input.actor.role, adminArea: input.area, dateKey: input.dateKey,
-      operation: input.mode === "OFF" ? "ADD" : "REMOVE", source: "auto-lunch-day-override-v1", operationId: randomUUID(),
-      before: { dayLunchMode: previous ? "OFF" : "AUTO" }, after: { dayLunchMode: input.mode },
-      createdSlots: [], archivedOrRemovedSlots: [],
-    } });
-
-    return true;
 }
 
 /** Denní režim patří k provozní správě dostupnosti; OFF je uložený override, AUTO jej odstraní. */

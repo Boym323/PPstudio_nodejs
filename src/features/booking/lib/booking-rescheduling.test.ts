@@ -1123,6 +1123,31 @@ describe("reschedule booking", () => {
     assert.equal(harness.calls.bookingUpdate.length, 0);
   });
 
+  test("neplatné expectedUpdatedAt nesmí obejít kontrolu souběžné změny", async () => {
+    const { bookingRescheduleErrorCodes } = await import("./booking-rescheduling");
+    const harness = await createHarness();
+
+    await assert.rejects(
+      harness.api.rescheduleBooking({
+        bookingId: "booking-1",
+        slotId: "slot-new",
+        newStartAt: "2026-04-28T09:00:00.000Z",
+        changedByUserId: null,
+        changedByClient: true,
+        notifyClient: true,
+        expectedUpdatedAt: "neplatné datum",
+      }),
+      (error) => {
+        expectRescheduleErrorCode(error, bookingRescheduleErrorCodes.concurrentModification);
+        return true;
+      },
+    );
+
+    assert.equal(harness.calls.bookingUpdate.length, 0);
+    assert.equal(harness.calls.logCreate.length, 0);
+    assert.equal(harness.calls.notification.length, 0);
+  });
+
   test("rejects reschedule when expected updatedAt does not match", async () => {
     const { bookingRescheduleErrorCodes } = await import("./booking-rescheduling");
     const harness = await createHarness();

@@ -58,18 +58,26 @@ test("přidání do galerie zopakuje pouze konflikt pořadí z paralelního vlo�
   process.env.ADMIN_SESSION_SECRET ??= 'test-secret-value-with-at-least-32-chars';
   process.env.ADMIN_OWNER_EMAIL ??= 'owner@example.com';
   process.env.EMAIL_DELIVERY_MODE ??= 'log';
-  const { createServiceGalleryMediaWithRetry } = await import("@/features/admin/actions/service-media-actions");
-  let aggregateCalls = 0;
-  let upsertCalls = 0;
-  const db = { serviceMedia: {
-    aggregate: async () => ({ _max: { sortOrder: ++aggregateCalls === 1 ? 10 : 20 } }),
-    upsert: async (args: { create: { sortOrder: number } }) => {
-      upsertCalls += 1;
-      if (upsertCalls === 1) throw { code: 'P2002', meta: { target: ['ServiceMedia_serviceId_role_sortOrder_key'] } };
-      return args.create;
-    },
-  } };
-  assert.deepEqual(await createServiceGalleryMediaWithRetry('service', 'asset', db as never), { serviceId: 'service', mediaAssetId: 'asset', role: ServiceMediaRole.GALLERY, sortOrder: 30 });
-  assert.equal(aggregateCalls, 2);
-  await assert.rejects(() => createServiceGalleryMediaWithRetry('service', 'asset', { serviceMedia: { aggregate: db.serviceMedia.aggregate, upsert: async () => { throw { code: 'P2002', meta: { target: ['ServiceMedia_serviceId_role_mediaAssetId_key'] } }; } } } as never));
+  const { createServiceGalleryMediaWithRetry } = await import("@/features/admin/lib/service-media-mutations");
+  for (const meta of [
+    { target: ['ServiceMedia_serviceId_role_sortOrder_key'] },
+    { target: ['serviceId', 'role', 'sortOrder'] },
+    { driverAdapterError: { cause: { constraint: { fields: ['"serviceId"', 'role', '"sortOrder"'] } } } },
+  ]) {
+    let aggregateCalls = 0;
+    let upsertCalls = 0;
+    const db = { serviceMedia: {
+      aggregate: async () => ({ _max: { sortOrder: ++aggregateCalls === 1 ? 10 : 20 } }),
+      upsert: async (args: { create: { sortOrder: number } }) => {
+        upsertCalls += 1;
+        if (upsertCalls === 1) throw { code: 'P2002', meta };
+        return args.create;
+      },
+    } };
+    assert.deepEqual(await createServiceGalleryMediaWithRetry('service', 'asset', db as never), { serviceId: 'service', mediaAssetId: 'asset', role: ServiceMediaRole.GALLERY, sortOrder: 30 });
+    assert.equal(aggregateCalls, 2);
+    const unknownConflict = { code: 'P2002' };
+    await assert.rejects(() => createServiceGalleryMediaWithRetry('service', 'asset', { serviceMedia: { aggregate: db.serviceMedia.aggregate, upsert: async () => { throw unknownConflict; } } } as never), (error) => error === unknownConflict);
+    await assert.rejects(() => createServiceGalleryMediaWithRetry('service', 'asset', { serviceMedia: { aggregate: db.serviceMedia.aggregate, upsert: async () => { throw { code: 'P2002', meta: { target: ['ServiceMedia_serviceId_role_mediaAssetId_key'] } }; } } } as never));
+  }
 });

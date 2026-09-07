@@ -828,6 +828,53 @@ describe("public booking access", () => {
 });
 
 describe("cancel booking flow", () => {
+  dbTest("souběžné storno stejného tokenu vrátí výsledek oběma požadavkům", async () => {
+    const seed = await createSeed();
+    const { prisma, cancelPublicBookingByToken, hashBookingActionToken } = await loadModules();
+    let unlock!: () => void;
+    let locked!: () => void;
+    const gate = new Promise<void>((resolve) => { unlock = resolve; });
+    const lockReady = new Promise<void>((resolve) => { locked = resolve; });
+    const blocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "BookingActionToken" WHERE "tokenHash" = ${hashBookingActionToken(seed.cancelTokenRaw)} FOR UPDATE`;
+      locked();
+      await gate;
+    }, { timeout: 15_000 });
+    let cancellations: Promise<PromiseSettledResult<Awaited<ReturnType<typeof cancelPublicBookingByToken>>>[]> | undefined;
+
+    try {
+      await Promise.race([lockReady, blocker]);
+      cancellations = Promise.allSettled([
+        cancelPublicBookingByToken(seed.cancelTokenRaw),
+        cancelPublicBookingByToken(seed.cancelTokenRaw),
+      ]);
+      let waiting = 0;
+      for (let attempt = 0; attempt < 100 && waiting < 2; attempt += 1) {
+        const [row] = await prisma.$queryRaw<Array<{ count: number }>>`
+          SELECT count(*)::int AS "count" FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE '%BookingActionToken%' AND query LIKE '%FOR UPDATE%'
+        `;
+        waiting = row.count;
+        if (waiting < 2) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.equal(waiting, 2, "Oba požadavky musí čekat na stejný token.");
+      unlock();
+      await blocker;
+      const results = await cancellations;
+      const statuses = results.map((result) => {
+        if (result.status === "rejected") throw result.reason;
+        return result.value.status;
+      });
+      assert.deepEqual(statuses.sort(), ["already_cancelled", "cancelled"]);
+    } finally {
+      unlock();
+      await blocker.catch(() => {});
+      await cancellations;
+      await cleanupSeed(seed);
+    }
+  });
+
   dbTest("explicit cancellation link expires after the booking start grace period", async () => {
     const seed = await createSeed();
     const {

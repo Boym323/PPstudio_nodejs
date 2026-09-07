@@ -7,6 +7,7 @@ import { verifyPassword } from "@/lib/auth/password";
 import {
   createSessionToken as createSessionTokenInternal,
   getSessionCookie as getSessionCookieConfig,
+  shouldRejectSessionForAbsoluteAge,
   verifySessionToken as verifySessionTokenInternal,
   type SessionTokenPayload,
 } from "@/lib/auth/session-token";
@@ -82,7 +83,10 @@ export async function resolveSessionFromTokenValue(token: string): Promise<Admin
     return null;
   }
 
-  if (!tokenPayload.sub) {
+  if (
+    !tokenPayload.sub
+    || shouldRejectSessionForAbsoluteAge(tokenPayload, Math.floor(Date.now() / 1000))
+  ) {
     return null;
   }
 

@@ -15,10 +15,20 @@ Formát je inspirovaný Keep a Changelog.
 
 ### Opraveno
 
+- Admin voucherový formulář v mobilním WebKitu zachová částku vyplněnou před dokončením hydratace, takže ji následný render nesmaže a vytvoření nevrátí chybu nulové hodnoty.
+- Souběžné přidávání fotografií do galerie služby správně opakuje konflikt pořadí s PostgreSQL adaptérem Prisma 7 místo pádu při zpracování chyby.
+- Souběžné storno stejné rezervace bezpečně zopakuje serializační konflikt a oběma požadavkům vrátí aktuální výsledek; neplatné časové razítko při přesunu už neobchází kontrolu souběžné změny.
+- Ruční retry a uvolnění e-mailového jobu nepřepíše výsledek odeslání ani nový claim workeru vzniklý během akce; administrace oznámí souběžnou změnu.
+
 - Z detailu rezervace lze nyní přímo otevřít profil dané klientky z jejího jména i řádku v souhrnu rezervace.
 
 - Security Audit nyní používá opravené verze tranzitivních balíčků `fast-uri` a `mysql2`; PostgreSQL runtime a Prisma verze zůstávají beze změny.
 - Pushover upozornění na blokace veřejného rezervačního formuláře nyní používají perzistentní atomický cooldown 10 minut pro hash skutečného limiteru (IP nebo e-mail); opakované blokace se dál zapisují do `BookingSubmissionLog`, ale nezaplňují notifikace duplicitními zprávami.
+
+### Zabezpečení
+
+- Absolutní limit stáří admin relace se kontroluje i při autorizaci API a server actions.
+- Interní zápisy galerie a denního režimu oběda jsou oddělené od veřejných exportů server actions.
 
 ## [3.26.2] - 2026-09-01
 

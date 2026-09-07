@@ -20,7 +20,7 @@ test("denní AUTO/OFF používá oprávnění volných termínů pro OWNER i SAL
   assert.match(action, /getCurrentPlannerDbUser\(parsed\.data\.area\)/);
   assert.doesNotMatch(action, /getCurrentOwnerDbUser/);
   assert.match(action, /persistAutoLunchDayMode\(tx, \{[\s\S]*actor,/);
-  assert.match(source, /actorRole: input\.actor\.role, adminArea: input\.area/);
+  assert.match(await readFile(new URL("../lib/admin-auto-lunch.ts", import.meta.url), "utf8"), /actorRole: input\.actor\.role, adminArea: input\.area/);
 });
 
 test("globální autoLunchEnabled zůstává v OWNER nastavení", async () => {
@@ -39,9 +39,10 @@ test("AUTO a OFF porovnávají a zapisují override atomicky v serializovatelné
   );
 
   assert.match(action, /runSerializableTransaction\(\(tx\) => persistAutoLunchDayMode\(tx, \{/);
-  assert.match(source, /if \(\(input\.mode === "OFF"\) === Boolean\(previous\)\) \{[\s\S]*return false/);
-  assert.match(source, /export async function persistAutoLunchDayMode[\s\S]*tx\.autoLunchDayOverride\.findUnique/);
-  assert.match(source, /persistAutoLunchDayMode[\s\S]*autoLunchDayOverride\.upsert\(/);
-  assert.match(source, /persistAutoLunchDayMode[\s\S]*tx\.autoLunchDayOverride\.delete\(\{ where: \{ dateKey: input\.dateKey \} \}\)/);
+  const mutationSource = await readFile(new URL("../lib/admin-auto-lunch.ts", import.meta.url), "utf8");
+  assert.match(mutationSource, /if \(\(input\.mode === "OFF"\) === Boolean\(previous\)\) \{[\s\S]*return false/);
+  assert.match(mutationSource, /export async function persistAutoLunchDayMode[\s\S]*tx\.autoLunchDayOverride\.findUnique/);
+  assert.match(mutationSource, /persistAutoLunchDayMode[\s\S]*autoLunchDayOverride\.upsert\(/);
+  assert.match(mutationSource, /persistAutoLunchDayMode[\s\S]*tx\.autoLunchDayOverride\.delete\(\{ where: \{ dateKey: input\.dateKey \} \}\)/);
   assert.doesNotMatch(action, /const previous = await prisma\.autoLunchDayOverride/);
 });

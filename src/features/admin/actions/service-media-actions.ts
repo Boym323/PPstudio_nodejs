@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { type AdminArea } from "@/config/navigation";
 import { requireAdminSectionAccess } from "@/features/admin/lib/admin-guards";
+import { createServiceGalleryMediaWithRetry } from "@/features/admin/lib/service-media-mutations";
 import { reorderServiceGallery } from "@/features/admin/lib/service-media-reorder";
 import { prisma } from "@/lib/prisma";
 import { isPublicMediaAsset } from "@/features/media/lib/public-media-asset";
@@ -62,31 +63,6 @@ export async function addServiceGalleryMediaAction(formData: FormData) {
   if (!(await isPublicMediaAsset(mediaAssetId))) throw new Error("Pro veřejnou službu lze vybrat jen publikované veřejné médium.");
   await createServiceGalleryMediaWithRetry(serviceId, mediaAssetId);
   revalidateServiceMedia();
-}
-
-function isServiceGallerySortOrderConflict(error: unknown) {
-  if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')) return false;
-  const target = 'meta' in error && typeof error.meta === 'object' && error.meta !== null && 'target' in error.meta ? error.meta.target : undefined;
-  return JSON.stringify(target).includes('serviceId_role_sortOrder');
-}
-
-export async function createServiceGalleryMediaWithRetry(serviceId: string, mediaAssetId: string, db = prisma) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const last = await db.serviceMedia.aggregate({
-        where: { serviceId, role: ServiceMediaRole.GALLERY },
-        _max: { sortOrder: true },
-      });
-      return await db.serviceMedia.upsert({
-        where: { serviceId_role_mediaAssetId: { serviceId, role: ServiceMediaRole.GALLERY, mediaAssetId } },
-        create: { serviceId, mediaAssetId, role: ServiceMediaRole.GALLERY, sortOrder: (last._max.sortOrder ?? -10) + 10 },
-        update: {},
-      });
-    } catch (error) {
-      if (!isServiceGallerySortOrderConflict(error) || attempt === 2) throw error;
-    }
-  }
-  throw new Error('SERVICE_GALLERY_CREATE_FAILED');
 }
 
 export async function removeServiceGalleryMediaAction(formData: FormData) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { VoucherType } from "@/generated/prisma/browser";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createAdminVoucherAction,
@@ -31,9 +31,20 @@ export function AdminVoucherForm({ data }: AdminVoucherFormProps) {
   const [type, setType] = useState<VoucherType>(data.initialValues.type);
   const [serviceId, setServiceId] = useState(data.services[0]?.id ?? "");
   const [originalValueCzk, setOriginalValueCzk] = useState("");
+  const originalValueInputRef = useRef<HTMLInputElement>(null);
   const [validFrom, setValidFrom] = useState(data.initialValues.validFrom);
   const [validUntil, setValidUntil] = useState(data.initialValues.validUntil);
   const [purchaserName, setPurchaserName] = useState("");
+
+  useEffect(() => {
+    // Na pomalejším mobilním WebKitu může uživatel vyplnit pole před hydratací.
+    // Uncontrolled input hodnotu zachová; preview ji po připojení Reactu převezme.
+    const hydratedValue = originalValueInputRef.current?.value ?? "";
+    if (hydratedValue !== originalValueCzk) {
+      setOriginalValueCzk(hydratedValue);
+    }
+  }, [originalValueCzk]);
+
   const selectedService = data.services.find((service) => service.id === serviceId) ?? null;
   const preview = useMemo(
     () =>
@@ -87,12 +98,13 @@ export function AdminVoucherForm({ data }: AdminVoucherFormProps) {
             {type === VoucherType.VALUE ? (
               <Field label="Hodnota v Kč" error={serverState.fieldErrors?.originalValueCzk}>
                 <input
+                  ref={originalValueInputRef}
                   type="number"
                   name="originalValueCzk"
                   min={1}
                   step={1}
                   inputMode="numeric"
-                  value={originalValueCzk}
+                  defaultValue={originalValueCzk}
                   onChange={(event) => setOriginalValueCzk(event.target.value)}
                   placeholder="Např. 1500"
                   className={inputClassName}

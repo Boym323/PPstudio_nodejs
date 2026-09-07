@@ -34,6 +34,8 @@ export default async function AdminEmailLogDetailRoute({
 
 function getFlashMessage(flash?: string) {
   switch (flash) {
+    case "job-changed":
+      return "Stav e-mailu se mezitím změnil. Akce nebyla provedena; zkontrolujte aktuální stav.";
     case "retry-success":
       return "Ruční retry byl odeslaný do fronty. Worker ho zpracuje při dalším průchodu.";
     case "release-success":

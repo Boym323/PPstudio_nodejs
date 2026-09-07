@@ -45,3 +45,17 @@ test("internal DB mutation helpers are server-only modules", async () => {
   assert.match(paymentMutationSource, /^import "server-only";/);
   assert.match(voucherQueueSource, /^import "server-only";/);
 });
+
+test("galerie a denní oběd nevystavují interní zápisy jako veřejné server actions", async () => {
+  const [gallerySource, settingsSource, galleryMutationSource, lunchMutationSource] = await Promise.all([
+    readFeatureFile("admin/actions/service-media-actions.ts"),
+    readFeatureFile("admin/actions/settings-actions.ts"),
+    readFeatureFile("admin/lib/service-media-mutations.ts"),
+    readFeatureFile("admin/lib/admin-auto-lunch.ts"),
+  ]);
+
+  assert.doesNotMatch(gallerySource, /export async function createServiceGalleryMediaWithRetry/);
+  assert.doesNotMatch(settingsSource, /export async function persistAutoLunchDayMode/);
+  assert.match(galleryMutationSource, /^import "server-only";/);
+  assert.match(lunchMutationSource, /^import "server-only";/);
+});

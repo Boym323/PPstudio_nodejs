@@ -20,7 +20,7 @@ const dbTest = process.env.RUN_DB_INTEGRATION_TESTS === "1" ? test : test.skip;
 dbTest("souběžné AUTO/OFF pro stejný cíl uloží jediný override a jediný audit", async () => {
   const [{ prisma }, { persistAutoLunchDayMode }, { runSerializableTransaction }] = await Promise.all([
     import("@/lib/prisma"),
-    import("./settings-actions"),
+    import("@/features/admin/lib/admin-auto-lunch"),
     import("@/lib/serializable-transaction"),
   ]);
   const suffix = randomUUID().slice(0, 8);

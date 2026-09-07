@@ -701,8 +701,8 @@ async function rescheduleBookingInTransaction(
     const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
 
     if (
-      !Number.isNaN(expectedUpdatedAt.getTime())
-      && booking.updatedAt.getTime() !== expectedUpdatedAt.getTime()
+      Number.isNaN(expectedUpdatedAt.getTime())
+      || booking.updatedAt.getTime() !== expectedUpdatedAt.getTime()
     ) {
       throw new BookingRescheduleError(
         bookingRescheduleErrorCodes.concurrentModification,
