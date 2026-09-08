@@ -1,5 +1,5 @@
 import { AxeBuilder } from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { AdminRole } from "@/generated/prisma/client";
 
 import {
@@ -24,6 +24,23 @@ async function expectNoAccessibilityViolations(page: Page, include?: string) {
   const results = await builder.analyze();
 
   expect(results.violations).toEqual([]);
+}
+
+async function waitForVisualState(locator: Locator) {
+  await expect.poll(
+    () =>
+      locator.evaluate((element) => {
+        const hasActiveAnimation = element
+          .getAnimations({ subtree: true })
+          .some(
+            (animation) =>
+              animation.playState !== "finished" && animation.playState !== "idle",
+          );
+
+        return getComputedStyle(element).opacity === "1" && !hasActiveAnimation;
+      }),
+    { timeout: 5_000 },
+  ).toBe(true);
 }
 
 test.describe("přístupnost", () => {
@@ -79,7 +96,7 @@ test.describe("přístupnost", () => {
     await inviteTrigger.click();
     const dialog = page.getByRole("dialog", { name: "Pozvat uživatele" });
     await expect(dialog).toBeVisible();
-    await page.waitForTimeout(500);
+    await waitForVisualState(dialog);
     await expectNoAccessibilityViolations(page, '[role="dialog"]');
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
@@ -92,7 +109,7 @@ test.describe("přístupnost", () => {
     await page.keyboard.press("Enter");
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    await page.waitForTimeout(500);
+    await waitForVisualState(menu);
     await page.keyboard.press("ArrowDown");
     const focusedMenuItem = menu.locator('[role="menuitem"]:focus');
     await expect(focusedMenuItem).toHaveCount(1);
