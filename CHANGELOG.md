@@ -8,6 +8,7 @@ Formát je inspirovaný Keep a Changelog.
 
 ### Opraveno
 
+- Odesílací tlačítko v dialogu pro pozvání administrátora používá v mobilním Safari explicitně kontrastní bílý text.
 - Dokončení návštěvy nyní opakuje celý PostgreSQL serializační konflikt v bounded retry mechanismu; souběžné voucherové dokončení tak zachová atomický stav rezervace a voucheru.
 - Admin poznámka a individuální cena rezervace nyní odmítnou stale formulář podle `expectedUpdatedAt` místo tichého přepsání novější změny; formulář nabídne načtení aktuální hodnoty.
 - Expirované rate-limit rezervace se průběžně uklízejí z existujícího email workeru po malých dávkách; SMTP exactly-once omezení zůstává explicitně zdokumentované a produkční background SMTP při startu varuje.
