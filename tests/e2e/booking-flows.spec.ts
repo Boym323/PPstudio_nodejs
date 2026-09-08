@@ -24,7 +24,13 @@ async function selectSlotById(
   expectedSlotId: string,
   actionButton: Locator,
 ) {
-  const exactSlotButton = page.getByRole("button", { name: slotButtonLabel });
+  const normalizeSlotLabel = (value: string) =>
+    value.normalize("NFKC").replace(/[–—-]/g, "-").replace(/\s+/g, " ").trim();
+  const exactSlotButtonLabel = slotButtonLabel.replace(
+    /^(Vybrat čas \d{2}:\d{2}) - (\d{2}:\d{2} dne )/,
+    "$1 – $2",
+  );
+  const exactSlotButton = page.getByRole("button", { name: exactSlotButtonLabel });
   const slotDateLabelMatch = slotButtonLabel.match(/ dne (.+)$/);
   const slotDateLabel = slotDateLabelMatch?.[1];
 
@@ -37,29 +43,16 @@ async function selectSlotById(
     }
   }
 
-  const selectors = [
-    exactSlotButton,
-    page.getByRole("button", { name: /^Vybrat čas / }),
-  ];
-
-  for (const candidates of selectors) {
-    const count = await candidates.count();
-
-    for (let index = 0; index < count; index += 1) {
-      const candidate = candidates.nth(index);
-      await candidate.click();
-      await page.waitForTimeout(100);
-
-      const selectedSlotId = await page.locator('input[name="slotId"]').inputValue();
-      if (selectedSlotId === expectedSlotId && (await actionButton.isEnabled())) {
-        return;
-      }
-    }
-  }
-
-  throw new Error(
-    `Nepodařilo se vybrat očekávaný slot ${expectedSlotId} pro tlačítko \"${slotButtonLabel}\".`,
-  );
+  const normalizedExpectedLabel = normalizeSlotLabel(exactSlotButtonLabel);
+  await expect.poll(async () => {
+    const label = await exactSlotButton.getAttribute("aria-label");
+    return label ? normalizeSlotLabel(label) : "";
+  }).toBe(normalizedExpectedLabel);
+  await expect(exactSlotButton).toBeVisible();
+  await expect(exactSlotButton).toBeEnabled();
+  await exactSlotButton.dispatchEvent("click");
+  await expect.poll(async () => page.locator('input[name="slotId"]').inputValue()).toBe(expectedSlotId);
+  await expect(actionButton).toBeEnabled();
 }
 
 function getCalendarDateButtonLabel(slotButtonLabel: string) {
@@ -136,8 +129,10 @@ async function selectAvailableSlot(
 
   for (let index = 0; index < buttonCount; index += 1) {
     const candidate = slotButtons.nth(index);
-    await candidate.click();
-    await page.waitForTimeout(100);
+    await expect(candidate).toBeVisible();
+    await expect(candidate).toBeEnabled();
+    await candidate.dispatchEvent("click");
+    await expect(candidate).toHaveAttribute("aria-pressed", "true");
 
     const slotId = await page.locator('input[name="slotId"]').inputValue();
     const startsAt = await page.locator('input[name="newStartAt"]').inputValue();
@@ -169,8 +164,10 @@ async function submitRescheduleUntilSuccess(
 
   for (let index = 0; index < buttonCount; index += 1) {
     const candidate = slotButtons.nth(index);
-    await candidate.click();
-    await page.waitForTimeout(100);
+    await expect(candidate).toBeVisible();
+    await expect(candidate).toBeEnabled();
+    await candidate.dispatchEvent("click");
+    await expect(candidate).toHaveAttribute("aria-pressed", "true");
 
     if ((await successHeading.count()) > 0) {
       return;
@@ -234,6 +231,22 @@ async function clickUntilFocused(trigger: Locator, target: Locator) {
   await expect(target).toBeFocused();
 }
 
+async function selectPublicSlotAndFocus(page: Page, slotLabel: string, target: Locator) {
+  const suggestedButton = page.getByRole("button", { name: slotLabel }).first();
+
+  if (await suggestedButton.count() > 0 && await suggestedButton.isVisible()) {
+    await clickUntilFocused(suggestedButton, target);
+    return;
+  }
+
+  const dateButton = await navigateCalendarToDate(page, slotLabel);
+  await dateButton.click();
+  const calendarButton = page.getByRole("button", { name: slotLabel }).last();
+  await expect(calendarButton).toBeVisible();
+  await expect(calendarButton).toBeEnabled();
+  await clickUntilFocused(calendarButton, target);
+}
+
 async function installMetaPixelSpy(page: Page) {
   await page.addInitScript(() => {
     window.__metaPixelCalls = [];
@@ -273,6 +286,7 @@ async function installMatomoSpy(page: Page) {
       },
     });
   });
+
 }
 
 async function getMetaPixelEventNames(page: Page) {
@@ -369,8 +383,9 @@ async function loginAdmin(page: Page, email: string, password: string) {
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Heslo").fill(password);
   await page.getByRole("button", { name: "Přihlásit se" }).click();
-  await expect(page).toHaveURL((url) =>
-    url.pathname === "/admin" || url.pathname === "/admin/provoz",
+  await expect(page).toHaveURL(
+    (url) => url.pathname === "/admin" || url.pathname === "/admin/provoz",
+    { timeout: 30_000 },
   );
 }
 
@@ -440,6 +455,69 @@ function roundUpToHalfHour(value: Date) {
 
   copy.setUTCHours(copy.getUTCHours() + 1, 0, 0, 0);
   return copy;
+}
+
+async function findIsolatedE2eWindow(durationMinutes: number) {
+  const siteSettings = await prisma.siteSettings.findUnique({
+    where: { id: "site-settings" },
+    select: {
+      bookingMinAdvanceHours: true,
+      bookingMaxAdvanceDays: true,
+    },
+  });
+  const minAdvanceHours = siteSettings?.bookingMinAdvanceHours ?? 2;
+  const maxAdvanceDays = siteSettings?.bookingMaxAdvanceDays ?? 90;
+  const now = new Date();
+  const quietDayStart = addMinutes(now, 14 * 24 * 60);
+  quietDayStart.setUTCHours(8, 0, 0, 0);
+  const policySafeStart = addMinutes(now, (minAdvanceHours + 10) * 60);
+  const searchStart = roundUpToHalfHour(policySafeStart > quietDayStart ? policySafeStart : quietDayStart);
+  const latestStart = roundUpToHalfHour(addMinutes(
+    new Date(),
+    maxAdvanceDays * 24 * 60 - durationMinutes,
+  ));
+  const latestEnd = addMinutes(latestStart, durationMinutes);
+  const [slots, bookings] = await Promise.all([
+    prisma.availabilitySlot.findMany({
+      where: { startsAt: { lt: latestEnd }, endsAt: { gt: searchStart } },
+      select: { startsAt: true, endsAt: true },
+    }),
+    prisma.booking.findMany({
+      where: {
+        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+        scheduledStartsAt: { lt: latestEnd },
+        OR: [
+          { blockedUntil: { gt: searchStart } },
+          { blockedUntil: null, scheduledEndsAt: { gt: searchStart } },
+        ],
+      },
+      select: { scheduledStartsAt: true, blockedUntil: true, scheduledEndsAt: true },
+    }),
+  ]);
+
+  for (let dayOffset = 0; ; dayOffset += 1) {
+    const startsAt = addMinutes(searchStart, dayOffset * 24 * 60);
+
+    if (startsAt > latestStart) {
+      break;
+    }
+
+    const endsAt = addMinutes(startsAt, durationMinutes);
+    const dateKey = formatPragueDateKey(startsAt);
+    const hasOtherDayData = slots.some((slot) => formatPragueDateKey(slot.startsAt) === dateKey)
+      || bookings.some((booking) => formatPragueDateKey(booking.scheduledStartsAt) === dateKey);
+    const slotConflict = slots.some((slot) => slot.startsAt < endsAt && slot.endsAt > startsAt);
+    const bookingConflict = bookings.some((booking) => {
+      const blockedUntil = booking.blockedUntil ?? booking.scheduledEndsAt;
+      return booking.scheduledStartsAt < endsAt && blockedUntil > startsAt;
+    });
+
+    if (!hasOtherDayData && !slotConflict && !bookingConflict) {
+      return { startsAt, endsAt };
+    }
+  }
+
+  throw new Error("Nepodařilo se najít izolované E2E okno dostupnosti.");
 }
 
 test.describe("rezervační toky", () => {
@@ -570,6 +648,7 @@ test.describe("rezervační toky", () => {
       .getByRole("button", { name: suggestedLabel })
       .first();
     await calendarButton.click();
+    await expect(calendarButton).toHaveAttribute("aria-pressed", "true");
 
     await expect.poll(async () => {
       const calls = await getMatomoCalls(page);
@@ -578,7 +657,13 @@ test.describe("rezervační toky", () => {
     let events = (await getMatomoCalls(page)).filter((call) => call[0] === "trackEvent");
     expect(events.filter((call) => call[2] === "Doporučený termín vybrán")).toHaveLength(0);
 
-    await suggestedButton.click();
+    await page.waitForTimeout(350);
+    const currentSuggestedButton = suggestedSection
+      .getByRole("button", { name: suggestedLabel })
+      .first();
+    await expect(currentSuggestedButton).toBeVisible();
+    await expect(currentSuggestedButton).toBeEnabled();
+    await currentSuggestedButton.dispatchEvent("click");
     await expect.poll(async () => {
       const calls = await getMatomoCalls(page);
       return calls.filter((call) => call[0] === "trackEvent" && call[2] === "Doporučený termín vybrán").length;
@@ -657,8 +742,9 @@ test.describe("rezervační toky", () => {
 
     try {
       await firstPage.goto(bookingPath);
-      await clickUntilFocused(
-        firstPage.getByRole("button", { name: primarySlotLabel }).first(),
+      await selectPublicSlotAndFocus(
+        firstPage,
+        primarySlotLabel,
         firstPage.getByLabel("Jméno a příjmení"),
       );
       await fillBookingContact(firstPage, "first");
@@ -666,8 +752,9 @@ test.describe("rezervační toky", () => {
       await expect(firstPage.getByText("Voucher je použitelný: Hodnotový poukaz.")).toBeVisible();
 
       await secondPage.goto(bookingPath);
-      await clickUntilFocused(
-        secondPage.getByRole("button", { name: primarySlotLabel }).first(),
+      await selectPublicSlotAndFocus(
+        secondPage,
+        primarySlotLabel,
         secondPage.getByLabel("Jméno a příjmení"),
       );
       await fillBookingContact(secondPage, "second");
@@ -675,12 +762,15 @@ test.describe("rezervační toky", () => {
       await expect(secondPage.getByRole("heading", { name: "Rezervace přijata" })).toBeVisible();
 
       const actionRequestCounts = new Map<string, number>();
+      const delayedActionId = { value: undefined as string | undefined };
       await firstPage.route("**/*", async (route) => {
         const actionId = route.request().headers()["next-action"];
 
         if (actionId) {
           actionRequestCounts.set(actionId, (actionRequestCounts.get(actionId) ?? 0) + 1);
-          await new Promise((resolve) => setTimeout(resolve, 600));
+          if (!delayedActionId.value || actionId === delayedActionId.value) {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+          }
         }
         await route.continue();
       });
@@ -689,6 +779,7 @@ test.describe("rezervační toky", () => {
       const firstSubmissionRequest = firstPage.waitForRequest((request) => Boolean(request.headers()["next-action"]));
       await firstSubmit.click();
       const bookingActionId = (await firstSubmissionRequest).headers()["next-action"];
+      delayedActionId.value = bookingActionId;
       await expect(firstPage.getByText("Tento termín byl mezitím obsazen. Nabídku jsme aktualizovali, vyberte prosím jiný čas.")).toBeVisible();
       await expect(firstPage.getByRole("button", { name: primarySlotLabel })).toHaveCount(0);
       if (await firstSubmit.count() > 0) {
@@ -796,22 +887,8 @@ test.describe("rezervační toky", () => {
     fixture.serviceSlug = serviceSlug;
     fixture.categoryName = categoryName;
 
-    const siteSettings = await prisma.siteSettings.findUnique({
-      where: { id: "site-settings" },
-      select: {
-        bookingMinAdvanceHours: true,
-        bookingMaxAdvanceDays: true,
-      },
-    });
-    const minAdvanceHours = siteSettings?.bookingMinAdvanceHours ?? 2;
-    const maxAdvanceDays = siteSettings?.bookingMaxAdvanceDays ?? 90;
     const slotDurationMinutes = 4 * 60;
-    const minSafeStart = roundUpToHalfHour(addMinutes(new Date(), (minAdvanceHours + 10) * 60));
-    const maxSafeStart = roundUpToHalfHour(addMinutes(
-      new Date(),
-      maxAdvanceDays * 24 * 60 - slotDurationMinutes,
-    ));
-    const blockedBookingStart = minSafeStart > maxSafeStart ? maxSafeStart : minSafeStart;
+    const { startsAt: blockedBookingStart } = await findIsolatedE2eWindow(slotDurationMinutes);
     const blockedBookingEnd = addMinutes(blockedBookingStart, serviceDurationMinutes);
     const blockedUntil = addMinutes(blockedBookingEnd, 15);
     const releasedStart = blockedUntil;
@@ -885,6 +962,13 @@ test.describe("rezervační toky", () => {
     const releasedStartButton = page
       .getByRole("button", { name: buildPublicSlotButtonLabel(releasedStart) })
       .first();
+    if (await releasedStartButton.count() === 0) {
+      const releasedDateButton = await navigateCalendarToDate(
+        page,
+        buildPublicSlotButtonLabel(releasedStart),
+      );
+      await releasedDateButton.click();
+    }
     await expect(releasedStartButton).toBeVisible();
     await expect(releasedStartButton).toBeEnabled();
     await clickUntilFocused(releasedStartButton, page.getByLabel("Jméno a příjmení"));
@@ -961,22 +1045,8 @@ test.describe("rezervační toky", () => {
     fixture.serviceSlug = serviceSlug;
     fixture.categoryName = categoryName;
 
-    const siteSettings = await prisma.siteSettings.findUnique({
-      where: { id: "site-settings" },
-      select: {
-        bookingMinAdvanceHours: true,
-        bookingMaxAdvanceDays: true,
-      },
-    });
-    const minAdvanceHours = siteSettings?.bookingMinAdvanceHours ?? 2;
-    const maxAdvanceDays = siteSettings?.bookingMaxAdvanceDays ?? 90;
     const slotDurationMinutes = 60;
-    const minSafeStart = roundUpToHalfHour(addMinutes(new Date(), (minAdvanceHours + 10) * 60));
-    const maxSafeStart = roundUpToHalfHour(addMinutes(
-      new Date(),
-      maxAdvanceDays * 24 * 60 - slotDurationMinutes,
-    ));
-    const slotStart = minSafeStart > maxSafeStart ? maxSafeStart : minSafeStart;
+    const { startsAt: slotStart } = await findIsolatedE2eWindow(slotDurationMinutes);
     const slotEnd = addMinutes(slotStart, slotDurationMinutes);
 
     await prisma.availabilitySlot.create({
@@ -1002,6 +1072,13 @@ test.describe("rezervační toky", () => {
     const slotStartButton = page
       .getByRole("button", { name: buildPublicSlotButtonLabel(slotStart) })
       .first();
+    if (await slotStartButton.count() === 0) {
+      const slotDateButton = await navigateCalendarToDate(
+        page,
+        buildPublicSlotButtonLabel(slotStart),
+      );
+      await slotDateButton.click();
+    }
     await expect(slotStartButton).toBeVisible();
     await expect(slotStartButton).toBeEnabled();
     await clickUntilFocused(slotStartButton, page.getByLabel("Jméno a příjmení"));

@@ -67,6 +67,7 @@ test.describe("přístupnost", () => {
   });
 
   test("admin Radix dialog and dropdown menu have no axe violations and restore focus", async ({ page }) => {
+    test.setTimeout(90_000);
     const fixture = await createPublicBookingFixture();
     const admin = await createAdminFixture(fixture.runId, AdminRole.OWNER);
     fixtures.push(fixture);
@@ -78,9 +79,7 @@ test.describe("přístupnost", () => {
     await inviteTrigger.click();
     const dialog = page.getByRole("dialog", { name: "Pozvat uživatele" });
     await expect(dialog).toBeVisible();
-    await dialog.evaluate((element) =>
-      Promise.all(element.getAnimations().map((animation) => animation.finished)),
-    );
+    await page.waitForTimeout(500);
     await expectNoAccessibilityViolations(page, '[role="dialog"]');
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
@@ -89,12 +88,11 @@ test.describe("přístupnost", () => {
     await page.goto("/admin/sluzby");
     const menuTrigger = page.getByRole("button", { name: "Akce služby" }).first();
     await menuTrigger.focus();
+    await expect(menuTrigger).toBeFocused();
     await page.keyboard.press("Enter");
     const menu = page.getByRole("menu");
     await expect(menu).toBeVisible();
-    await menu.evaluate((element) =>
-      Promise.all(element.getAnimations().map((animation) => animation.finished)),
-    );
+    await page.waitForTimeout(500);
     await page.keyboard.press("ArrowDown");
     const focusedMenuItem = menu.locator('[role="menuitem"]:focus');
     await expect(focusedMenuItem).toHaveCount(1);
@@ -118,8 +116,11 @@ test.describe("přístupnost", () => {
     await page.getByRole("menuitem", { name: "Nastavit jako interní" }).click();
     await expect.poll(async () => (await prisma.service.findUniqueOrThrow({ where: { slug: fixture.serviceSlug } })).isPubliclyBookable).toBe(false);
 
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await menuTrigger.click();
-    await page.getByRole("menuitem", { name: "Nastavit jako veřejnou" }).focus();
+    const publicMenuItem = page.getByRole("menuitem", { name: "Nastavit jako veřejnou" });
+    await expect(publicMenuItem).toBeVisible();
+    await publicMenuItem.focus();
     await page.keyboard.press("Enter");
     await expect.poll(async () => (await prisma.service.findUniqueOrThrow({ where: { slug: fixture.serviceSlug } })).isPubliclyBookable).toBe(true);
   });

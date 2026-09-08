@@ -1,20 +1,15 @@
 import "dotenv/config";
 
+import {
+  cleanupExpiredRateLimitReservations,
+  RATE_LIMIT_RESERVATION_CLEANUP_BATCH_SIZE,
+} from "@/lib/security/rate-limit-reservation-cleanup";
 import { prisma } from "@/lib/prisma";
 
 async function main() {
-  const deleted = await prisma.$executeRaw`
-    DELETE FROM "RateLimitReservation"
-    WHERE "id" IN (
-      SELECT "id"
-      FROM "RateLimitReservation"
-      WHERE "expiresAt" <= NOW()
-      ORDER BY "expiresAt"
-      LIMIT 10000
-    )
-  `;
+  const deleted = await cleanupExpiredRateLimitReservations();
 
-  console.log(`Odstraněno expirovaných rate-limit rezervací: ${deleted}`);
+  console.log(`Odstraněno expirovaných rate-limit rezervací: ${deleted} (dávka max. ${RATE_LIMIT_RESERVATION_CLEANUP_BATCH_SIZE})`);
 }
 
 main()

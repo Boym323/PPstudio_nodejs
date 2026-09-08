@@ -78,6 +78,12 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
+if (env.NODE_ENV === "production" && env.EMAIL_DELIVERY_MODE === "background" && env.EMAIL_TRANSPORT === "smtp") {
+  console.warn(
+    "EMAIL_TRANSPORT=smtp provides at-least-once delivery only; Resend REST is required for provider-side idempotency.",
+  );
+}
+
 export const mediaStorageRoot =
   env.MEDIA_STORAGE_ROOT && env.MEDIA_STORAGE_ROOT.length > 0
     ? path.resolve(env.MEDIA_STORAGE_ROOT)

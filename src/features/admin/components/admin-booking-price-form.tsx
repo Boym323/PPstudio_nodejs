@@ -10,6 +10,7 @@ import { type AdminArea } from "@/config/navigation";
 export function AdminBookingPriceForm({
   area,
   bookingId,
+  expectedUpdatedAt,
   basePriceCzk,
   finalPriceCzk,
   reason,
@@ -19,6 +20,7 @@ export function AdminBookingPriceForm({
 }: {
   area: AdminArea;
   bookingId: string;
+  expectedUpdatedAt: string;
   basePriceCzk: number;
   finalPriceCzk: number | null;
   reason: string | null;
@@ -47,6 +49,7 @@ export function AdminBookingPriceForm({
     >
       <input type="hidden" name="area" value={area} />
       <input type="hidden" name="bookingId" value={bookingId} />
+      <input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
       <input type="hidden" name="confirmOverpayment" value={preview?.overpaidCzk && overpaymentConfirmed ? "true" : ""} />
 
       {serverState.status === "success" && serverState.successMessage ? (
@@ -58,6 +61,15 @@ export function AdminBookingPriceForm({
       {serverState.status === "error" && serverState.formError ? (
         <div className="max-w-full break-words rounded-[0.9rem] border border-red-300/16 bg-red-400/10 px-3 py-2 text-sm leading-5 text-red-50">
           {serverState.formError}
+          {serverState.conflict ? (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-2 block text-sm font-semibold text-red-100 underline underline-offset-4"
+            >
+              Načíst aktuální hodnotu
+            </button>
+          ) : null}
         </div>
       ) : null}
 

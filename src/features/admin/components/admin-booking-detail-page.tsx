@@ -452,6 +452,7 @@ function BookingNotesPanel({ data }: { data: AdminBookingDetailData }) {
               <AdminBookingNoteForm
                 area={data.area}
                 bookingId={data.id}
+                expectedUpdatedAt={data.reschedule.expectedUpdatedAt}
                 initialValue={data.internalNote ?? ""}
               />
             </div>
@@ -633,6 +634,7 @@ function PriceSummaryItem({ data }: { data: AdminBookingDetailData }) {
         <AdminBookingPriceForm
           area={data.area}
           bookingId={data.id}
+          expectedUpdatedAt={data.reschedule.expectedUpdatedAt}
           basePriceCzk={priceAdjustment.basePriceCzk}
           finalPriceCzk={priceAdjustment.finalPriceCzk}
           reason={priceAdjustment.reason}

@@ -146,6 +146,7 @@ Lokální doporučení:
 - Owner sekce `Přístupy` zobrazuje pouze databázové účty. Recovery zůstává mimo webovou aplikaci, takže nemůže vytvořit neplatnou session ani obcházet DB kontrolu role a aktivity.
 - Pokud je `EMAIL_DELIVERY_MODE=background` a `EMAIL_TRANSPORT=smtp`, jsou `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` a `SMTP_FROM_EMAIL` povinné už při startu aplikace.
 - Pokud je `EMAIL_DELIVERY_MODE=background` a `EMAIL_TRANSPORT=resend`, je při startu aplikace povinné `RESEND_API_KEY`.
+- V aktuálním produkčním `.env` je `EMAIL_DELIVERY_MODE=log`, takže se e-mail neposílá žádným providerem; při zapnutí background delivery musí být `EMAIL_TRANSPORT` nastavený explicitně. `resend` používá providerovou idempotenci, zatímco `smtp` zůstává pouze at-least-once a při produkčním background režimu vypíše při startu jasné varování.
 - Pokud je `EMAIL_DELIVERY_MODE=background`, admin pole `emailSenderEmail` v sekci `Nastavení` musí odpovídat `SMTP_FROM_EMAIL`; jinak aplikace změnu odmítne, aby se předešlo selhání doručování.
 - `NEXT_PUBLIC_APP_URL` je kritická i pro provozní approve/reject odkazy v e-mailu; pokud míří na špatný host nebo schéma, owner email akce povedou na neplatnou URL.
 - `NEXT_PUBLIC_SITE_URL` je doporučené nastavit v CI/Playwright režimu, kde `NEXT_PUBLIC_APP_URL` míří na lokální testovací origin (např. `http://127.0.0.1:3100`), aby veřejné SEO canonical/JSON-LD URL zůstaly produkční (např. `https://ppstudio.cz`).

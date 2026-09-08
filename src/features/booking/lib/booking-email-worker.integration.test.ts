@@ -12,6 +12,7 @@ import {
   EmailLogType,
 } from "@/generated/prisma/browser";
 import { Prisma } from "@/generated/prisma/client";
+import { getPragueLocalDate } from "@/features/booking/lib/booking-local-time";
 
 process.env.NEXT_PUBLIC_APP_NAME ??= "PP Studio";
 process.env.NEXT_PUBLIC_APP_URL ??= "https://example.com";
@@ -163,24 +164,34 @@ async function findIsolatedReminderAuthorizationWindow(
   // Delivery preflight smí pokračovat k autorizační bariéře jen u termínu
   // nejvýše 26 hodin dopředu. Běžná helper funkce hledá termíny nejdříve za
   // 14 dní, což je vhodné pro scheduler testy, ale zde by preflight skončil
-  // dříve a test by čekal na nikdy neuvolněnou bariéru. Začínáme o něco dříve,
-  // aby i reschedule o hodinu zůstal v povoleném okně.
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const startsAt = new Date(Date.now() + (24 * 60 + 30 + attempt * 5) * 60 * 1000);
+  // dříve a test by čekal na nikdy neuvolněnou bariéru. Hledáme omezené okno
+  // od aktuálního booking min-advance do 26 hodin, aby test nebyl závislý na konkrétním DEV booking v
+  // části reminder window. Service-change může prodloužit službu o 30 minut;
+  // reschedule test si vytváří druhý slot sám.
+  const searchDurationMinutes = durationMinutes + (durationMinutes === 60 ? 30 : 0);
+  const policy = await prisma.siteSettings.findUnique({
+    where: { id: "site-settings" },
+    select: { bookingMinAdvanceHours: true },
+  });
+  const searchStartMinutes = Math.max(60, (policy?.bookingMinAdvanceHours ?? 2) * 60);
+  const maxAttempts = Math.floor((26 * 60 - searchStartMinutes) / 5);
+
+  for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+    const startsAt = new Date(Date.now() + (searchStartMinutes + attempt * 5) * 60 * 1000);
     startsAt.setUTCSeconds(0, 0);
-    const endsAt = addMinutes(startsAt, durationMinutes);
+    const searchEndsAt = addMinutes(startsAt, searchDurationMinutes);
 
     const [overlappingSlots, overlappingBookings] = await Promise.all([
       prisma.availabilitySlot.count({
         where: {
-          startsAt: { lt: endsAt },
+          startsAt: { lt: searchEndsAt },
           endsAt: { gt: startsAt },
         },
       }),
       prisma.booking.count({
         where: {
           status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
-          scheduledStartsAt: { lt: endsAt },
+          scheduledStartsAt: { lt: searchEndsAt },
           OR: [
             { blockedUntil: { gt: startsAt } },
             { blockedUntil: null, scheduledEndsAt: { gt: startsAt } },
@@ -190,7 +201,7 @@ async function findIsolatedReminderAuthorizationWindow(
     ]);
 
     if (overlappingSlots === 0 && overlappingBookings === 0) {
-      return { startsAt, endsAt };
+      return { startsAt, endsAt: addMinutes(startsAt, durationMinutes) };
     }
   }
 
@@ -2471,6 +2482,15 @@ dbTest("service-change mezi preflightem a autorizací zneplatní starý reminder
   const { updateAdminBookingService } = await import("@/features/admin/lib/admin-booking");
   const window = await findIsolatedReminderAuthorizationWindow(prisma, 60);
   const fixture = await createConfirmedManualBooking(seed, window.startsAt);
+  const localDate = getPragueLocalDate(window.startsAt);
+  const existingAutoLunchOverride = await prisma.autoLunchDayOverride.findUnique({
+    where: { dateKey: localDate },
+    select: { dateKey: true },
+  });
+  const createdAutoLunchOverride = !existingAutoLunchOverride;
+  if (createdAutoLunchOverride) {
+    await prisma.autoLunchDayOverride.create({ data: { dateKey: localDate } });
+  }
   const alternativeService = await createAlternativeService(fixture, seed);
   const oldReminder = await createPendingBookingEmailLog(fixture, {
     type: EmailLogType.BOOKING_REMINDER,
@@ -2544,6 +2564,9 @@ dbTest("service-change mezi preflightem a autorizací zneplatní starý reminder
     assert.ok(replacement);
     assert.equal((replacement.payload as Record<string, unknown>).serviceId, alternativeService.id);
   } finally {
+    if (createdAutoLunchOverride) {
+      await prisma.autoLunchDayOverride.delete({ where: { dateKey: localDate } });
+    }
     await prisma.booking.update({
       where: { id: fixture.bookingId },
       data: { serviceId: fixture.serviceId },
@@ -2601,6 +2624,7 @@ dbTest("reschedule mezi preflightem a autorizací zneplatní starý reminder", a
       newStartAt: nextStartsAt.toISOString(),
       changedByUserId: null,
       changedByClient: false,
+      allowManualOverride: true,
       notifyClient: false,
       expectedUpdatedAt: bookingBefore.updatedAt.toISOString(),
     });

@@ -4,7 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
-const MAX_RETRIES = 4;
+export const SERIALIZABLE_TRANSACTION_MAX_RETRIES = 4;
 const RETRY_DELAY_MS = 40;
 
 function isSerializableConflict(error: unknown) {
@@ -43,6 +43,7 @@ function waitForRetry(delayMs: number) {
 /** Opakuje pouze PostgreSQL serializační konflikty; ostatní chyby propouští beze změny. */
 export async function runSerializableTransaction<T>(
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { onRetry?: (retryNumber: number, error: unknown) => void } = {},
 ): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -50,10 +51,11 @@ export async function runSerializableTransaction<T>(
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
     } catch (error) {
-      if (!isSerializableConflict(error) || attempt >= MAX_RETRIES) {
+      if (!isSerializableConflict(error) || attempt >= SERIALIZABLE_TRANSACTION_MAX_RETRIES) {
         throw error;
       }
 
+      options.onRetry?.(attempt + 1, error);
       await waitForRetry(RETRY_DELAY_MS * (attempt + 1));
     }
   }

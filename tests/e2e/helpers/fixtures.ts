@@ -168,6 +168,7 @@ async function resetE2eRecentAuditRateLimitState() {
       },
     },
   });
+  await prisma.rateLimitReservation.deleteMany({});
 }
 
 function roundUpToHalfHour(value: Date) {
@@ -264,7 +265,22 @@ async function createCatalogFixture(runId: string) {
   const firstCandidate = baseStart <= maxSafeStart
     ? baseStart
     : roundUpToHalfHour(maxSafeStart);
-  const runOffset = hashRunId(runId) % 48;
+  const existingActiveBookings = await prisma.booking.findMany({
+    where: {
+      status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+      scheduledStartsAt: { lt: addMinutes(maxSafeStart, 180) },
+      OR: [
+        { blockedUntil: { gt: firstCandidate } },
+        { blockedUntil: null, scheduledEndsAt: { gt: firstCandidate } },
+      ],
+    },
+    select: {
+      scheduledStartsAt: true,
+      scheduledEndsAt: true,
+      blockedUntil: true,
+    },
+  });
+  const runOffset = hashRunId(runId) % 6;
   const rescheduleConflictPublicNote = `E2E reschedule conflict ${runId}`;
   const rescheduleSuccessPublicNote = `E2E reschedule success ${runId}`;
   let primarySlot;
@@ -277,17 +293,34 @@ async function createCatalogFixture(runId: string) {
   let rescheduleEnd = addMinutes(rescheduleSuccessStart, service.durationMinutes);
 
   for (let attempt = 0; attempt < 96; attempt += 1) {
-    const candidateOffset = (runOffset + attempt) * 4 * 60;
+    const candidateIndex = runOffset + attempt;
+    const candidateOffset = Math.floor(candidateIndex / 6) * 24 * 60
+      + (candidateIndex % 6) * 2 * 60;
     primaryStart = addMinutes(firstCandidate, candidateOffset);
 
     if (primaryStart > maxSafeStart) {
-      primaryStart = addMinutes(firstCandidate, ((runOffset + attempt) % 48) * 4 * 60);
+      primaryStart = addMinutes(firstCandidate, (candidateIndex % 6) * 2 * 60);
     }
 
     primaryEnd = addMinutes(primaryStart, 180);
     rescheduleStart = addMinutes(primaryStart, 24 * 60);
     rescheduleSuccessStart = addMinutes(rescheduleStart, service.durationMinutes);
     rescheduleEnd = addMinutes(rescheduleSuccessStart, service.durationMinutes);
+
+    const hasExistingBookingConflict = existingActiveBookings.some((booking) => {
+      const blockedUntil = booking.blockedUntil ?? booking.scheduledEndsAt;
+
+      return [
+        [primaryStart, primaryEnd],
+        [rescheduleStart, rescheduleEnd],
+      ].some(([windowStart, windowEnd]) => (
+        booking.scheduledStartsAt < windowEnd && blockedUntil > windowStart
+      ));
+    });
+
+    if (hasExistingBookingConflict) {
+      continue;
+    }
 
     try {
       [primarySlot, rescheduleSlot, rescheduleSuccessSlot] = await prisma.$transaction(async (tx) => {

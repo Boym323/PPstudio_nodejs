@@ -8,6 +8,7 @@ import {
   BookingSource,
   BookingStatus,
 } from "@/generated/prisma/browser";
+import { getNextCalendarDate, getPragueLocalDate, resolvePragueLocalDateTime } from "@/features/booking/lib/booking-local-time";
 
 process.env.NEXT_PUBLIC_APP_NAME ??= "PP Studio";
 process.env.NEXT_PUBLIC_APP_URL ??= "https://example.com";
@@ -61,19 +62,33 @@ async function findIsolatedManualWindow(
         startsAt.setUTCDate(startsAt.getUTCDate() + dayOffset);
         startsAt.setUTCHours(hour, minute, 0, 0);
         const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+        const localDate = getPragueLocalDate(startsAt);
+        const nextLocalDate = getNextCalendarDate(localDate);
+        const dayStartsAt = resolvePragueLocalDateTime(localDate, "00:00");
+        const dayEndsAt = nextLocalDate ? resolvePragueLocalDateTime(nextLocalDate, "00:00") : null;
 
-        const overlappingSlots = await prisma.availabilitySlot.count({
-          where: {
-            startsAt: {
-              lt: endsAt,
-            },
-            endsAt: {
-              gt: startsAt,
-            },
-          },
-        });
+        if (!dayStartsAt || !dayEndsAt) continue;
 
-        if (overlappingSlots === 0) {
+        const [sameDaySlots, sameDayBookings] = await Promise.all([
+          prisma.availabilitySlot.count({
+            where: {
+              startsAt: { lt: dayEndsAt },
+              endsAt: { gt: dayStartsAt },
+            },
+          }),
+          prisma.booking.count({
+            where: {
+              status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+              scheduledStartsAt: { lt: dayEndsAt },
+              OR: [
+                { blockedUntil: { gt: dayStartsAt } },
+                { blockedUntil: null, scheduledEndsAt: { gt: dayStartsAt } },
+              ],
+            },
+          }),
+        ]);
+
+        if (sameDaySlots === 0 && sameDayBookings === 0) {
           return { startsAt, endsAt };
         }
       }

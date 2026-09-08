@@ -32,11 +32,11 @@ import {
   restoreArchivedAvailabilityAfterManualOverrideShortening,
 } from "@/features/booking/lib/booking-slot-compaction";
 import { resolvePublishedSlotCoverage } from "@/features/booking/lib/booking-slot-availability";
+import { getBookingPaymentSummary } from "@/features/booking/payments/lib/booking-payment-summary";
 import {
   enqueueBookingReminder24hForBooking,
   getBookingReminder24hEnqueueWindowPosition,
 } from "@/features/booking/lib/booking-reminders";
-import { prisma } from "@/lib/prisma";
 import { scrubSensitiveEmailPayload } from "@/lib/email/payload-security";
 import {
   ActiveClientDeliveryLeaseError,
@@ -363,23 +363,38 @@ export async function applyAdminBookingStatusChangeInTransaction(
 export async function updateAdminBookingInternalNote({
   bookingId,
   actorUserId,
+  expectedUpdatedAt,
   internalNote,
 }: {
   bookingId: string;
   actorUserId: string | null;
+  expectedUpdatedAt: string;
   internalNote: string | null;
 }) {
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "Booking"
+      WHERE "id" = ${bookingId}
+      FOR UPDATE
+    `);
+
     const booking = await tx.booking.findUnique({
       where: { id: bookingId },
       select: {
         id: true,
         status: true,
+        updatedAt: true,
       },
     });
 
     if (!booking) {
       return { status: "not-found" as const };
+    }
+
+    const expectedDate = new Date(expectedUpdatedAt);
+    if (Number.isNaN(expectedDate.getTime()) || expectedDate.getTime() !== booking.updatedAt.getTime()) {
+      return { status: "concurrent-modification" as const };
     }
 
     await tx.booking.update({
@@ -404,6 +419,112 @@ export async function updateAdminBookingInternalNote({
     });
 
     return { status: "success" as const };
+  });
+}
+
+type UpdateAdminBookingPriceInput = {
+  bookingId: string;
+  actorUserId: string | null;
+  expectedUpdatedAt: string;
+  nextFinalPriceCzk: number | null;
+  normalizedReason: string;
+  confirmOverpayment: boolean;
+};
+
+export async function updateAdminBookingPrice(input: UpdateAdminBookingPriceInput) {
+  return runSerializableTransaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "Booking" WHERE "id" = ${input.bookingId} FOR UPDATE
+    `);
+    const currentBooking = await tx.booking.findUnique({
+      where: { id: input.bookingId },
+      select: {
+        id: true,
+        clientId: true,
+        status: true,
+        servicePriceFromCzk: true,
+        finalPriceCzk: true,
+        priceAdjustmentReason: true,
+        priceAdjustedAt: true,
+        priceAdjustedByUserId: true,
+        updatedAt: true,
+        service: { select: { priceFromCzk: true } },
+        voucherRedemptions: { select: { amountCzk: true } },
+        payments: { select: { amountCzk: true, status: true } },
+      },
+    });
+
+    if (!currentBooking) return { status: "not-found" as const };
+
+    const expectedDate = new Date(input.expectedUpdatedAt);
+    if (Number.isNaN(expectedDate.getTime()) || expectedDate.getTime() !== currentBooking.updatedAt.getTime()) {
+      return { status: "concurrent-modification" as const };
+    }
+
+    const basePriceCzk = Math.max(0, currentBooking.servicePriceFromCzk ?? currentBooking.service.priceFromCzk ?? 0);
+    const clearsAdjustment = input.nextFinalPriceCzk === null || input.nextFinalPriceCzk === basePriceCzk;
+    if (!clearsAdjustment && input.normalizedReason.length === 0) {
+      return { status: "reason-required" as const };
+    }
+
+    const nextPaymentSummary = getBookingPaymentSummary({
+      totalPriceCzk: clearsAdjustment ? basePriceCzk : input.nextFinalPriceCzk,
+      voucherRedemptions: currentBooking.voucherRedemptions,
+      payments: currentBooking.payments,
+    });
+    if (nextPaymentSummary.overpaidCzk > 0 && !input.confirmOverpayment) {
+      return { status: "overpayment-confirmation-required" as const, overpaidCzk: nextPaymentSummary.overpaidCzk };
+    }
+
+    const nextStoredPrice = clearsAdjustment ? null : input.nextFinalPriceCzk;
+    const nextStoredReason = clearsAdjustment ? null : input.normalizedReason;
+    if (
+      currentBooking.finalPriceCzk === nextStoredPrice
+      && currentBooking.priceAdjustmentReason === nextStoredReason
+    ) return { status: "unchanged" as const, bookingId: currentBooking.id, clientId: currentBooking.clientId, clearsAdjustment };
+
+    const changedAt = new Date();
+    await tx.booking.update({
+      where: { id: currentBooking.id },
+      data: clearsAdjustment
+        ? {
+            finalPriceCzk: null,
+            priceAdjustmentReason: null,
+            priceAdjustedAt: null,
+            priceAdjustedByUserId: null,
+          }
+        : {
+            finalPriceCzk: input.nextFinalPriceCzk,
+            priceAdjustmentReason: input.normalizedReason,
+            priceAdjustedAt: changedAt,
+            priceAdjustedByUserId: input.actorUserId,
+          },
+    });
+    await tx.bookingStatusHistory.create({
+      data: {
+        bookingId: currentBooking.id,
+        status: currentBooking.status,
+        actorType: BookingActorType.USER,
+        actorUserId: input.actorUserId,
+        reason: clearsAdjustment ? "Individuální cena zrušena" : "Individuální cena upravena",
+        metadata: {
+          source: "admin-booking-price-update-v1",
+          before: {
+            finalPriceCzk: currentBooking.finalPriceCzk,
+            priceAdjustmentReason: currentBooking.priceAdjustmentReason,
+            priceAdjustedAt: currentBooking.priceAdjustedAt?.toISOString() ?? null,
+            priceAdjustedByUserId: currentBooking.priceAdjustedByUserId,
+          },
+          after: {
+            finalPriceCzk: nextStoredPrice,
+            priceAdjustmentReason: nextStoredReason,
+            priceAdjustedAt: clearsAdjustment ? null : changedAt.toISOString(),
+            priceAdjustedByUserId: clearsAdjustment ? null : input.actorUserId,
+          },
+        },
+      },
+    });
+    return { status: "updated" as const, bookingId: currentBooking.id, clientId: currentBooking.clientId, clearsAdjustment };
   });
 }
 

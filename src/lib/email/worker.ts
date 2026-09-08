@@ -8,10 +8,12 @@ import {
 import { deliverEmailLog } from "@/lib/email/delivery";
 import { EMAIL_WORKER_LOCK_TIMEOUT_MS } from "@/lib/email/booking-delivery-fence";
 import { prisma } from "@/lib/prisma";
+import { cleanupExpiredRateLimitReservations } from "@/lib/security/rate-limit-reservation-cleanup";
 
 const WORKER_BATCH_SIZE = 10;
 const WORKER_IDLE_DELAY_MS = 5_000;
 const MAX_ITERATIONS_PER_RUN = 1_000;
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 15 * 60 * 1_000;
 
 export type EmailWorkerConfig = {
   once?: boolean;
@@ -106,8 +108,22 @@ export async function runBookingReminderSchedulerOnce(now = new Date()) {
   return result;
 }
 
+export async function runRateLimitReservationCleanupOnce(now = new Date()) {
+  const deleted = await cleanupExpiredRateLimitReservations(prisma, now);
+
+  if (deleted > 0) {
+    console.info("Rate-limit reservation cleanup finished", {
+      at: now.toISOString(),
+      deleted,
+    });
+  }
+
+  return deleted;
+}
+
 export async function startEmailDeliveryWorker() {
   let nextReminderScanAt = 0;
+  let nextRateLimitCleanupAt = 0;
 
   while (true) {
     const now = Date.now();
@@ -115,6 +131,15 @@ export async function startEmailDeliveryWorker() {
     if (now >= nextReminderScanAt) {
       await runBookingReminderSchedulerOnce(new Date(now));
       nextReminderScanAt = now + BOOKING_REMINDER_SCAN_INTERVAL_MS;
+    }
+
+    if (now >= nextRateLimitCleanupAt) {
+      try {
+        await runRateLimitReservationCleanupOnce(new Date(now));
+      } catch (error) {
+        console.error("Rate-limit reservation cleanup failed", error);
+      }
+      nextRateLimitCleanupAt = now + RATE_LIMIT_CLEANUP_INTERVAL_MS;
     }
 
     const processed = await runEmailDeliveryWorkerOnce();

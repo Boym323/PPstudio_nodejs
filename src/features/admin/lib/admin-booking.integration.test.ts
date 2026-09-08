@@ -48,6 +48,7 @@ async function findIsolatedAdminWindow(
   prisma: Awaited<typeof import("@/lib/prisma")>["prisma"],
   seed: string,
   durationMinutes: number,
+  options: { isolateReminderScan?: boolean } = {},
 ) {
   const daySeed = Number.parseInt(seed.slice(0, 4), 16);
   const hourSeed = Number.parseInt(seed.slice(4, 6), 16);
@@ -91,6 +92,24 @@ async function findIsolatedAdminWindow(
         ]);
 
         if (overlappingSlots === 0 && overlappingBookings === 0) {
+          if (options.isolateReminderScan) {
+            const reminderScanAt = new Date(startsAt.getTime() - 25.5 * 60 * 60 * 1000);
+            const reminderWindowEnd = new Date(reminderScanAt.getTime() + 26 * 60 * 60 * 1000);
+            const otherReminderBookings = await prisma.booking.count({
+              where: {
+                status: BookingStatus.CONFIRMED,
+                clientEmailSnapshot: { not: "" },
+                reminder24hSentAt: null,
+                scheduledStartsAt: {
+                  gt: reminderScanAt,
+                  lte: reminderWindowEnd,
+                },
+              },
+            });
+
+            if (otherReminderBookings > 0) continue;
+          }
+
           return { startsAt, endsAt };
         }
       }
@@ -121,14 +140,9 @@ async function disableAutoLunchForAdminFixture(
 async function createAdminServiceChangeFixture(
   prisma: Awaited<typeof import("@/lib/prisma")>["prisma"],
   suffix: string,
-  options: { startsAt?: Date } = {},
+  options: { isolateReminderScan?: boolean } = {},
 ) {
-  const isolatedWindow = options.startsAt
-    ? {
-        startsAt: options.startsAt,
-        endsAt: new Date(options.startsAt.getTime() + 120 * 60 * 1000),
-      }
-    : await findIsolatedAdminWindow(prisma, suffix, 120);
+  const isolatedWindow = await findIsolatedAdminWindow(prisma, suffix, 120, options);
   const { startsAt, endsAt } = isolatedWindow;
   const bookingEndsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
   const owner = await prisma.adminUser.create({
@@ -1679,7 +1693,7 @@ dbTest("updateAdminBookingService resetuje neodeslaný reminder a scheduler zalo
   ]);
 
   const suffix = randomUUID().slice(0, 8);
-  const fixture = await createAdminServiceChangeFixture(prisma, suffix);
+  const fixture = await createAdminServiceChangeFixture(prisma, suffix, { isolateReminderScan: true });
   const queuedAt = new Date(fixture.startsAt.getTime() - 26 * 60 * 60 * 1000);
   const oldReminder = await prisma.emailLog.create({
     data: {
@@ -1774,12 +1788,8 @@ dbTest("updateAdminBookingService po opuštění enqueue window vytvoří replac
   ]);
 
   const suffix = randomUUID().slice(0, 8);
-  const now = new Date();
-  const fixture = await createAdminServiceChangeFixture(
-    prisma,
-    suffix,
-    { startsAt: new Date(now.getTime() + 24.5 * 60 * 60 * 1000) },
-  );
+  const fixture = await createAdminServiceChangeFixture(prisma, suffix);
+  const now = new Date(fixture.startsAt.getTime() - 24.5 * 60 * 60 * 1000);
   const oldReminder = await prisma.emailLog.create({
     data: {
       bookingId: fixture.booking.id,
@@ -1851,12 +1861,8 @@ dbTest("updateAdminBookingService uvnitř enqueue window založí reminder okam�
   ]);
 
   const suffix = randomUUID().slice(0, 8);
-  const now = new Date();
-  const fixture = await createAdminServiceChangeFixture(
-    prisma,
-    suffix,
-    { startsAt: new Date(now.getTime() + 25.5 * 60 * 60 * 1000) },
-  );
+  const fixture = await createAdminServiceChangeFixture(prisma, suffix, { isolateReminderScan: true });
+  const now = new Date(fixture.startsAt.getTime() - 25.5 * 60 * 60 * 1000);
 
   try {
     const result = await updateAdminBookingService({
@@ -1895,12 +1901,8 @@ dbTest("enqueue helper nereplikuje aktuální PENDING reminder", async () => {
   ]);
 
   const suffix = randomUUID().slice(0, 8);
-  const now = new Date();
-  const fixture = await createAdminServiceChangeFixture(
-    prisma,
-    suffix,
-    { startsAt: new Date(now.getTime() + 24.5 * 60 * 60 * 1000) },
-  );
+  const fixture = await createAdminServiceChangeFixture(prisma, suffix);
+  const now = new Date(fixture.startsAt.getTime() - 60 * 60 * 1000);
   await prisma.emailLog.create({
     data: {
       bookingId: fixture.booking.id,
@@ -1957,12 +1959,8 @@ dbTest("updateAdminBookingService po začátku rezervace replacement reminder ne
   ]);
 
   const suffix = randomUUID().slice(0, 8);
-  const now = new Date();
-  const fixture = await createAdminServiceChangeFixture(
-    prisma,
-    suffix,
-    { startsAt: new Date(now.getTime() - 60 * 60 * 1000) },
-  );
+  const fixture = await createAdminServiceChangeFixture(prisma, suffix);
+  const now = new Date(fixture.startsAt.getTime() + 60 * 60 * 1000);
 
   try {
     const result = await updateAdminBookingService({

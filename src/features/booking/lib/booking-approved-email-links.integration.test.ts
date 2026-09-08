@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 
-import { Prisma } from "@/generated/prisma/client";
+import { BookingStatus, Prisma } from "@/generated/prisma/client";
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 process.env.NEXT_PUBLIC_APP_NAME ??= "PP Studio";
@@ -88,8 +88,9 @@ async function createSeed(options?: {
 
   const suffix = randomUUID().slice(0, 8);
   const bookingEmail = `client-${suffix}@example.com`;
-  const startsAt = new Date(Date.now() + (options?.startsAfterHours ?? 7 * 24) * 60 * 60 * 1000);
-  startsAt.setUTCSeconds(0, 0);
+  const targetStartsAt = new Date(Date.now() + (options?.startsAfterHours ?? 7 * 24) * 60 * 60 * 1000);
+  targetStartsAt.setUTCSeconds(0, 0);
+  const startsAt = await findIsolatedSeedStart(prisma, targetStartsAt);
   const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
 
   const actor = await prisma.adminUser.create({
@@ -202,6 +203,49 @@ async function createSeed(options?: {
     approveRawToken,
     rejectRawToken,
   };
+}
+
+async function findIsolatedSeedStart(
+  prisma: Awaited<ReturnType<typeof loadModules>>["prisma"],
+  targetStartsAt: Date,
+) {
+  const searchStart = new Date(targetStartsAt.getTime() - 24 * 60 * 60 * 1000);
+  const searchEnd = new Date(targetStartsAt.getTime() + 24 * 60 * 60 * 1000);
+  const [slots, bookings] = await Promise.all([
+    prisma.availabilitySlot.findMany({
+      where: { startsAt: { lt: searchEnd }, endsAt: { gt: searchStart } },
+      select: { startsAt: true, endsAt: true },
+    }),
+    prisma.booking.findMany({
+      where: {
+        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+        scheduledStartsAt: { lt: searchEnd },
+        OR: [
+          { blockedUntil: { gt: searchStart } },
+          { blockedUntil: null, scheduledEndsAt: { gt: searchStart } },
+        ],
+      },
+      select: { scheduledStartsAt: true, blockedUntil: true, scheduledEndsAt: true },
+    }),
+  ]);
+
+  for (let attempt = 0; attempt <= 96; attempt += 1) {
+    const direction = attempt % 2 === 0 ? -1 : 1;
+    const distance = Math.ceil(attempt / 2) * 30 * 60 * 1000;
+    const startsAt = new Date(targetStartsAt.getTime() + direction * distance);
+    const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+    const slotConflict = slots.some((slot) => slot.startsAt < endsAt && slot.endsAt > startsAt);
+    const bookingConflict = bookings.some((booking) => {
+      const blockedUntil = booking.blockedUntil ?? booking.scheduledEndsAt;
+      return booking.scheduledStartsAt < endsAt && blockedUntil > startsAt;
+    });
+
+    if (!slotConflict && !bookingConflict) {
+      return startsAt;
+    }
+  }
+
+  throw new Error("Nepodařilo se najít izolovaný seed termín pro booking e-mail integrační test.");
 }
 
 async function cleanupSeed(seed: Seed) {

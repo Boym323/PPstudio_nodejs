@@ -10,10 +10,12 @@ import { type AdminArea } from "@/config/navigation";
 export function AdminBookingNoteForm({
   area,
   bookingId,
+  expectedUpdatedAt,
   initialValue,
 }: {
   area: AdminArea;
   bookingId: string;
+  expectedUpdatedAt: string;
   initialValue: string;
 }) {
   const [serverState, formAction] = useActionState(
@@ -25,6 +27,7 @@ export function AdminBookingNoteForm({
     <form action={formAction} className="space-y-3">
       <input type="hidden" name="area" value={area} />
       <input type="hidden" name="bookingId" value={bookingId} />
+      <input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
 
       {serverState.status === "success" && serverState.successMessage ? (
         <div className="rounded-[0.9rem] border border-emerald-300/16 bg-emerald-400/10 px-3 py-2 text-sm leading-5 text-emerald-50">
@@ -35,6 +38,15 @@ export function AdminBookingNoteForm({
       {serverState.status === "error" && serverState.formError ? (
         <div className="rounded-[0.9rem] border border-red-300/16 bg-red-400/10 px-3 py-2 text-sm leading-5 text-red-50">
           {serverState.formError}
+          {serverState.conflict ? (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-2 block text-sm font-semibold text-red-100 underline underline-offset-4"
+            >
+              Načíst aktuální hodnotu
+            </button>
+          ) : null}
         </div>
       ) : null}
 

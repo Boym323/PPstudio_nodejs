@@ -250,6 +250,16 @@ dbTest("seznamy, filtry a statistiky nezapočítávají budoucí aktivní vouche
   const suffix = randomUUID().slice(0, 8).toUpperCase();
   const now = new Date("2030-01-01T12:00:00.000Z");
   const validUntil = new Date("2030-02-01T12:00:00.000Z");
+  const openWhere = {
+    status: { in: [VoucherStatus.ACTIVE, VoucherStatus.PARTIALLY_REDEEMED] },
+    validFrom: { lte: now },
+    OR: [{ validUntil: null }, { validUntil: { gte: now } }],
+  };
+  const [baselineOpen, baselineValue, baselineService] = await Promise.all([
+    prisma.voucher.count({ where: openWhere }),
+    prisma.voucher.aggregate({ where: { ...openWhere, type: VoucherType.VALUE }, _sum: { remainingValueCzk: true } }),
+    prisma.voucher.count({ where: { ...openWhere, type: VoucherType.SERVICE } }),
+  ]);
   const codes = ["VALUE", "SERVICE", "FUTURE-VALUE", "FUTURE-SERVICE", "DRAFT", "EXPIRED"].map(
     (kind) => `PP-STAT-${kind}-${suffix}`,
   );
@@ -326,8 +336,21 @@ dbTest("seznamy, filtry a statistiky nezapočítávají budoucí aktivní vouche
     assert.deepEqual(expired.map((voucher) => voucher.code), [codes[5]]);
     assert.equal(page.vouchers.filter((voucher) => voucher.effectiveStatus === VoucherStatus.ACTIVE).length, 2);
     assert.equal(page.vouchers.filter((voucher) => voucher.effectiveStatus === VoucherStatus.DRAFT).length, 3);
-    assert.equal(page.stats.find((stat) => stat.label === "Otevřené vouchery")?.value, "2");
-    assert.equal(page.stats.find((stat) => stat.label === "Zbývá k uplatnění")?.value, "500 Kč + 1 služba");
+    assert.equal(page.stats.find((stat) => stat.label === "Otevřené vouchery")?.value, String(baselineOpen + 2));
+    const expectedRemainingValue = (baselineValue._sum?.remainingValueCzk ?? 0) + 500;
+    const expectedServiceCount = baselineService + 1;
+    const expectedRemainingParts = [];
+    if (expectedRemainingValue > 0 || expectedServiceCount === 0) {
+      expectedRemainingParts.push(new Intl.NumberFormat("cs-CZ", {
+        maximumFractionDigits: 0,
+        style: "currency",
+        currency: "CZK",
+      }).format(expectedRemainingValue));
+    }
+    if (expectedServiceCount > 0) {
+      expectedRemainingParts.push(`${expectedServiceCount} ${expectedServiceCount === 1 ? "služba" : expectedServiceCount <= 4 ? "služby" : "služeb"}`);
+    }
+    assert.equal(page.stats.find((stat) => stat.label === "Zbývá k uplatnění")?.value, expectedRemainingParts.join(" + "));
   } finally {
     await prisma.voucher.deleteMany({ where: { code: { in: codes } } });
   }

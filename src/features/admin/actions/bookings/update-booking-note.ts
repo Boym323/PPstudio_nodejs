@@ -71,6 +71,7 @@ import {
 const updateBookingNoteSchema = z.object({
   area: z.enum(["owner", "salon"]),
   bookingId: z.string().trim().min(1).max(64),
+  expectedUpdatedAt: z.string().trim().min(1).max(64),
   internalNote: z.string().trim().max(1000, "Interní poznámka je příliš dlouhá."),
 });
 
@@ -82,6 +83,7 @@ export async function updateBookingNoteAction(
   const parsed = updateBookingNoteSchema.safeParse({
     area: readFormString(formData, "area"),
     bookingId: readFormString(formData, "bookingId"),
+    expectedUpdatedAt: readFormString(formData, "expectedUpdatedAt"),
     internalNote: readFormString(formData, "internalNote"),
   });
 
@@ -102,6 +104,7 @@ export async function updateBookingNoteAction(
   const result = await updateAdminBookingInternalNote({
     bookingId: parsed.data.bookingId,
     actorUserId,
+    expectedUpdatedAt: parsed.data.expectedUpdatedAt,
     internalNote: parsed.data.internalNote || null,
   });
 
@@ -109,6 +112,14 @@ export async function updateBookingNoteAction(
     return {
       status: "error",
       formError: "Rezervaci se nepodařilo najít.",
+    };
+  }
+
+  if (result.status === "concurrent-modification") {
+    return {
+      status: "error",
+      conflict: true,
+      formError: "Rezervace se mezitím změnila v jiném okně. Načtěte aktuální poznámku a zkuste to znovu.",
     };
   }
 
@@ -121,4 +132,3 @@ export async function updateBookingNoteAction(
       : "Interní poznámka byla odstraněná.",
   };
 }
-
