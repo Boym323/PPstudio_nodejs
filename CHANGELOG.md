@@ -6,6 +6,8 @@ Formát je inspirovaný Keep a Changelog.
 
 ## [Unreleased]
 
+## [3.28.1] - 2026-09-08
+
 ### Opraveno
 
 - Ruční uvolnění e-mailového jobu je nyní dostupné i serverově pouze pro skutečně stale claim; atomická kontrola původního tokenu a času claimu zabrání přepsání nového workeru nebo dokončeného odeslání.
