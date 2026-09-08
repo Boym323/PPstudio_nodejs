@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { createResendEmailLog } from "@/features/admin/actions/email-log-resend";
 import { requireAdminArea } from "@/lib/auth/session";
+import { isEmailWorkerClaimStale } from "@/lib/email/booking-delivery-fence";
 import { manuallyResolveEmailIncident } from "@/lib/email/incident-resolution";
 import { prisma } from "@/lib/prisma";
 import { requeuePendingEmailLog } from "@/features/admin/lib/email-log-requeue";
@@ -117,12 +118,14 @@ export async function releaseStuckEmailLogAction(formData: FormData) {
   if (
     !emailLog ||
     emailLog.status !== EmailLogStatus.PENDING ||
-    emailLog.processingStartedAt === null
+    emailLog.processingStartedAt === null ||
+    emailLog.processingToken === null ||
+    !isEmailWorkerClaimStale(emailLog.processingStartedAt)
   ) {
-    redirect("/admin/email-logy");
+    redirect(emailLog ? `/admin/email-logy/${emailLog.id}?flash=job-changed` : "/admin/email-logy");
   }
 
-  const requeued = await requeuePendingEmailLog(emailLog, false);
+  const requeued = await requeuePendingEmailLog(emailLog, false, { requireStaleClaim: true });
 
   revalidatePath("/admin/email-logy");
   revalidatePath(`/admin/email-logy/${emailLog.id}`);

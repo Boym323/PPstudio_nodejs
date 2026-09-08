@@ -16,7 +16,7 @@ import { scrubSensitiveEmailPayload } from "@/lib/email/payload-security";
 import {
   acquireClientDeliveryLease,
   CLIENT_DELIVERY_LEASE_BUSY_BUFFER_MS,
-  EMAIL_WORKER_LOCK_TIMEOUT_MS,
+  getEmailWorkerStaleBefore,
   hasActiveClientDeliveryLease,
   releaseClientDeliveryLease,
 } from "@/lib/email/booking-delivery-fence";
@@ -39,7 +39,7 @@ type EmailDeliveryDependencies = Partial<{
 export async function claimEmailLogForImmediateDelivery(emailLogId: string) {
   const now = new Date();
   const processingToken = randomUUID();
-  const staleBefore = new Date(now.getTime() - EMAIL_WORKER_LOCK_TIMEOUT_MS);
+  const staleBefore = getEmailWorkerStaleBefore(now);
   const claimed = await prisma.emailLog.updateMany({
     where: {
       id: emailLogId,

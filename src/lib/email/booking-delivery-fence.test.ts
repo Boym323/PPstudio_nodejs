@@ -44,3 +44,15 @@ test("claim timeout může předběhnout lease, provider timeout ale musí být 
   assert.ok(EMAIL_PROVIDER_TIMEOUT_MS < CLIENT_DELIVERY_LEASE_MS);
   assert.equal(advanceBookingCommunicationGeneration({ communicationGeneration: 7 }), 8);
 });
+
+test("stale claim používá stejnou hranici jako worker", async () => {
+  const { EMAIL_WORKER_LOCK_TIMEOUT_MS, getEmailWorkerStaleBefore, isEmailWorkerClaimStale } = await fenceModulePromise;
+  const now = new Date("2026-09-08T12:00:00.000Z");
+  const staleBefore = getEmailWorkerStaleBefore(now);
+
+  assert.equal(isEmailWorkerClaimStale(new Date(staleBefore.getTime() - 1), now), true);
+  assert.equal(isEmailWorkerClaimStale(staleBefore, now), false);
+  assert.equal(isEmailWorkerClaimStale(new Date(staleBefore.getTime() + 1), now), false);
+  assert.equal(isEmailWorkerClaimStale(null, now), false);
+  assert.equal(staleBefore.getTime(), now.getTime() - EMAIL_WORKER_LOCK_TIMEOUT_MS);
+});

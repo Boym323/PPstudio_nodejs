@@ -14,6 +14,17 @@ export const CLIENT_DELIVERY_LEASE_BUSY_BUFFER_MS = 5 * 1000;
 /** Musí zůstat výrazně kratší než lease, aby po timeoutu zbyl čas na finalizaci v DB. */
 export const EMAIL_PROVIDER_TIMEOUT_MS = 30 * 1000;
 
+export function getEmailWorkerStaleBefore(now = new Date()) {
+  return new Date(now.getTime() - EMAIL_WORKER_LOCK_TIMEOUT_MS);
+}
+
+export function isEmailWorkerClaimStale(
+  processingStartedAt: Date | null,
+  now = new Date(),
+) {
+  return processingStartedAt !== null && processingStartedAt < getEmailWorkerStaleBefore(now);
+}
+
 export type BookingClientDeliveryLeaseState = {
   clientDeliveryLeaseToken?: string | null;
   clientDeliveryLeaseExpiresAt?: Date | null;

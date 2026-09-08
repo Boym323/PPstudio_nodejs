@@ -5,6 +5,7 @@ import { getDayBounds, isValidDateKey } from "@/features/admin/lib/admin-slots/t
 import { getAdminBookingHref } from "@/features/admin/lib/booking/booking-display";
 import { formatServicePrice } from "@/features/admin/lib/admin-service-format";
 import { formatClientPhoneForDisplay } from "@/features/booking/lib/client-phone";
+import { getEmailWorkerStaleBefore, isEmailWorkerClaimStale } from "@/lib/email/booking-delivery-fence";
 import { deriveTrackingState } from "@/lib/email/resend-webhooks";
 import { getEmailDeliveryFailureWhere, getUnresolvedEmailDeliveryFailureWhere, getUnresolvedEmailDeliveryIncidentRootWhere, isEmailDeliveryFailure } from "@/lib/email/incidents";
 import { prisma } from "@/lib/prisma";
@@ -418,7 +419,6 @@ export type AdminLogsData = {
 };
 
 const adminLogPageSize = 50;
-const workerLockTimeoutMs = 10 * 60 * 1000;
 
 function bookingHistoryLabel(status: BookingStatus) {
   switch (status) {
@@ -908,7 +908,7 @@ export async function getAdminLogsData(input: {
   const dateTo = parseLogDate(input.dateTo, true);
   const requestedPage = Number.parseInt(input.page ?? "1", 10);
   const now = new Date();
-  const staleBefore = new Date(now.getTime() - workerLockTimeoutMs);
+  const staleBefore = getEmailWorkerStaleBefore(now);
   const attentionSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const dateWhere = dateFrom || dateTo ? { gte: dateFrom ?? undefined, lt: dateTo ?? undefined } : undefined;
   const emailActive = (safeView === "emails" || safeView === "attention") && (source === "all" || source === "email");
@@ -1086,7 +1086,8 @@ export async function getAdminLogsData(input: {
       const tracking = deriveTrackingState(log);
       const logSeverity = getEmailLogSeverity({ ...log, staleBefore });
       const status = getEmailRecentStatus(log.status, log.processingStartedAt, log.attemptCount);
-      const isStuck = log.processingStartedAt !== null && log.processingStartedAt < staleBefore;
+      const isStuck = log.processingToken !== null
+        && isEmailWorkerClaimStale(log.processingStartedAt, now);
       const primaryAction: AdminLogItem["primaryAction"] = isOwner
         ? (isStuck ? "release" : status === "failed" || status === "retry" ? "retry" : "detail")
         : null;
@@ -1193,8 +1194,7 @@ export async function getEmailLogDetailData(emailLogId: string): Promise<EmailLo
 
   const processingStartedAt = emailLog.processingStartedAt;
   const isProcessing = processingStartedAt !== null;
-  const isStuck =
-    isProcessing && now.getTime() - processingStartedAt.getTime() > 10 * 60 * 1000;
+  const isStuck = isEmailWorkerClaimStale(processingStartedAt, now);
   const finalStatus = getEmailDetailFinalStatus(emailLog);
   const tracking = deriveTrackingState(emailLog);
   const bookingTitle = emailLog.booking?.serviceNameSnapshot ?? "Bez navázané rezervace";
@@ -1244,7 +1244,9 @@ export async function getEmailLogDetailData(emailLogId: string): Promise<EmailLo
     isProcessing,
     isStuck,
     canRetry: emailLog.status === EmailLogStatus.PENDING && !isProcessing,
-    canRelease: isProcessing && emailLog.status === EmailLogStatus.PENDING,
+    canRelease: emailLog.status === EmailLogStatus.PENDING
+      && isStuck
+      && emailLog.processingToken !== null,
     nextAttemptLabel: formatDateTimeLabel(emailLog.nextAttemptAt),
     processingStartedLabel: formatDateTimeLabel(emailLog.processingStartedAt),
     sentAtLabel: formatDateTimeLabel(emailLog.sentAt),
