@@ -161,7 +161,7 @@ Praktický přehled hlavních HTTP endpointů je v [`docs/API.md`](docs/API.md).
 
 ## Verzování (SemVer)
 - Projekt používá Semantic Versioning `MAJOR.MINOR.PATCH` v `package.json`.
-- Aktuální release je `3.27.0`; stabilní řada projektu začala verzí `1.0.0`.
+- Aktuální release je `3.28.0`; stabilní řada projektu začala verzí `1.0.0`.
 - `PATCH` (`0.1.0 -> 0.1.1`) zvyšuj při opravách chyb, interním refaktoru bez změny chování a technických úpravách bez dopadu na veřejné rozhraní.
 - `MINOR` (`0.1.0 -> 0.2.0`) zvyšuj při přidání nové funkce nebo rozšíření existující funkcionality zpětně kompatibilním způsobem.
 - `MAJOR` (`0.1.0 -> 1.0.0` nebo `1.x.y -> 2.0.0`) zvyšuj při nekompatibilní změně API, datového kontraktu, routingu nebo provozního chování, které vyžaduje zásah uživatele/operátora.

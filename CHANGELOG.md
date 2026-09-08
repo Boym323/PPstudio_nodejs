@@ -6,6 +6,8 @@ Formát je inspirovaný Keep a Changelog.
 
 ## [Unreleased]
 
+## [3.28.0] - 2026-09-08
+
 ### Opraveno
 
 - Odesílací tlačítko v dialogu pro pozvání administrátora používá v mobilním Safari explicitně kontrastní bílý text.

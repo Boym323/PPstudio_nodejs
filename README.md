@@ -2,7 +2,7 @@
 
 Produkční web kosmetického studia s veřejnou prezentací, rezervačním flow a odděleným admin rozhraním pro role `OWNER` a `SALON`.
 
-Aktuální verze: <!-- current-version -->**3.27.0**. README slouží jako rychlý GitHub rozcestník a onboarding. Detailní provozní a vývojová dokumentace je vedená přímo v repozitáři, ne jako primární GitHub Wiki.
+Aktuální verze: <!-- current-version -->**3.28.0**. README slouží jako rychlý GitHub rozcestník a onboarding. Detailní provozní a vývojová dokumentace je vedená přímo v repozitáři, ne jako primární GitHub Wiki.
 
 Nejdůležitější dokumenty:
 - [MANUAL.md](MANUAL.md) pro provozní souvislosti
