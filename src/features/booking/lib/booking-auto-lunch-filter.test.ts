@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { AvailabilitySlotServiceRestrictionMode } from "@/generated/prisma/browser";
 import { resolvePragueLocalDateTime } from "./booking-local-time";
 import {
+  buildSlotTimeOptions,
   filterTimeOptionsForAutoLunch,
+  getAutoLunchBoundaryStartCandidates,
   type TimeSlotOption,
 } from "./booking-time-slots";
 import { shouldApplyAutoLunch } from "./booking-schedule-optimization";
@@ -93,6 +96,33 @@ test("cleanup odstraňující poslední možnost oběda není selectable", () =>
 test("krátká směna lunch constraint nepoužije", () => {
   const candidate = option("11:00", 165);
   assert.deepEqual(filter(candidate, context({ availabilityEnd: "13:00" })), [candidate]);
+});
+
+test("po automatickém obědě nabídne první bezpečný čtvrthodinový začátek", () => {
+  const scheduleOptimization = context({
+    availabilityStart: "08:30",
+    bookedIntervals: [{ start: "08:30", end: "12:30" }],
+  });
+  const autoLunchBoundaryStartCandidates = getAutoLunchBoundaryStartCandidates(scheduleOptimization);
+  const options = buildSlotTimeOptions({
+    id: "slot-after-lunch",
+    startsAt: iso("08:30"),
+    endsAt: iso("17:00"),
+    publicNote: null,
+    capacity: 1,
+    serviceRestrictionMode: AvailabilitySlotServiceRestrictionMode.ANY,
+    allowedServiceIds: [],
+    bookedIntervals: [{ startsAt: iso("08:30"), endsAt: iso("12:30") }],
+  }, 60, 0, autoLunchBoundaryStartCandidates);
+  const available = filterTimeOptionsForAutoLunch(options, {
+    serviceDurationMinutes: 60,
+    cleanupBlockMinutes: 0,
+    capacity: 1,
+    scheduleOptimization,
+  });
+
+  assert.ok(autoLunchBoundaryStartCandidates.includes(iso("13:15")));
+  assert.ok(available.some((candidate) => candidate.startsAt === iso("13:15")));
 });
 
 test("full-day context započítá minulou část směny a shoduje se s denní aktivací serverové logiky", () => {

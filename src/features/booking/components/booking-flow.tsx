@@ -15,6 +15,7 @@ import {
 import {
   buildSlotTimeOptions,
   filterTimeOptionsForAutoLunch,
+  getAutoLunchBoundaryStartCandidates,
   groupSlotsByDayPeriod,
   type TimeSlotOption,
 } from "@/features/booking/lib/booking-time-slots";
@@ -529,16 +530,22 @@ export function BookingFlow({
       return [];
     }
 
+    const capacity = availableSlots.every((slot) => slot.capacity === 1) ? 1 : 2;
+    const autoLunchBoundaryStartCandidates = capacity === 1
+      ? getAutoLunchBoundaryStartCandidates(currentCatalog.scheduleOptimization)
+      : [];
+
     const options = availableSlots.flatMap((slot) => buildSlotTimeOptions(
       slot,
       selectedService.durationMinutes,
       selectedService.cleanupBlockMinutes,
+      autoLunchBoundaryStartCandidates,
     ));
 
     return filterTimeOptionsForAutoLunch(options, {
       serviceDurationMinutes: selectedService.durationMinutes,
       cleanupBlockMinutes: selectedService.cleanupBlockMinutes,
-      capacity: availableSlots.every((slot) => slot.capacity === 1) ? 1 : 2,
+      capacity,
       scheduleOptimization: currentCatalog.scheduleOptimization,
     });
   }, [availableSlots, currentCatalog.scheduleOptimization, selectedService]);

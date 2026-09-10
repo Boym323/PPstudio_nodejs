@@ -3,6 +3,7 @@ import { AvailabilitySlotServiceRestrictionMode } from "@/generated/prisma/brows
 import {
   buildSlotTimeOptions,
   filterTimeOptionsForAutoLunch,
+  getAutoLunchBoundaryStartCandidates,
 } from "@/features/booking/lib/booking-time-slots";
 
 import { getSlotDateKey, getSlotDurationMinutes } from "./helpers";
@@ -97,13 +98,22 @@ export function getAvailableDateKeysForAvailability(
         (slot) => slot.serviceRestrictionMode === AvailabilitySlotServiceRestrictionMode.ANY
           || slot.allowedServiceIds.includes(serviceId),
       );
+  const capacity = eligibleSlots.every((slot) => slot.capacity === 1) ? 1 : 2;
+  const autoLunchBoundaryStartCandidates = capacity === 1 && catalog.scheduleOptimization
+    ? getAutoLunchBoundaryStartCandidates(catalog.scheduleOptimization)
+    : [];
   const options = eligibleSlots
-    .flatMap((slot) => buildSlotTimeOptions(slot, serviceDurationMinutes, cleanupBlockMinutes));
+    .flatMap((slot) => buildSlotTimeOptions(
+      slot,
+      serviceDurationMinutes,
+      cleanupBlockMinutes,
+      autoLunchBoundaryStartCandidates,
+    ));
   const lunchSafeOptions = catalog.scheduleOptimization
     ? filterTimeOptionsForAutoLunch(options, {
         serviceDurationMinutes,
         cleanupBlockMinutes,
-        capacity: eligibleSlots.every((slot) => slot.capacity === 1) ? 1 : 2,
+        capacity,
         scheduleOptimization: catalog.scheduleOptimization,
       })
     : options;

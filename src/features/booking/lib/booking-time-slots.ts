@@ -110,6 +110,7 @@ export function buildSlotTimeOptions(
   slot: PublicBookingCatalog["slots"][number],
   serviceDurationMinutes: number,
   cleanupBlockMinutes = 0,
+  extraStartCandidates: Iterable<string> = [],
 ): TimeSlotOption[] {
   const slotStartsAtMs = new Date(slot.startsAt).getTime();
   const slotEndsAtMs = new Date(slot.endsAt).getTime();
@@ -143,6 +144,15 @@ export function buildSlotTimeOptions(
 
   for (let startsAtMs = slotStartsAtMs; startsAtMs <= latestStartMs; startsAtMs += stepMs) {
     startCandidates.add(startsAtMs);
+  }
+
+  for (const candidate of extraStartCandidates) {
+    const startsAtMs = new Date(candidate).getTime();
+
+    if (Number.isFinite(startsAtMs) && startsAtMs >= slotStartsAtMs && startsAtMs <= latestStartMs) {
+      startCandidates.add(startsAtMs);
+      quarterHourCandidates.add(startsAtMs);
+    }
   }
 
   for (const bookingEndsAtMs of bookingEndsSorted) {
@@ -209,6 +219,59 @@ export function buildSlotTimeOptions(
   }
 
   return options;
+}
+
+/**
+ * Automatický oběd není uložená rezervace, proto jeho konec nevznikne mezi
+ * běžnými čtvrthodinovými kandidáty. Přidáme jej explicitně; následný filtr
+ * ponechá jen variantu, pro niž oběd skutečně zůstává proveditelný.
+ */
+export function getAutoLunchBoundaryStartCandidates(
+  scheduleOptimization: PublicBookingCatalog["scheduleOptimization"],
+) {
+  const availability = scheduleOptimization.publishedAvailability.map((interval) => ({
+    startsAt: new Date(interval.startsAt).getTime(),
+    endsAt: new Date(interval.endsAt).getTime(),
+  }));
+  const bookedBlocks = scheduleOptimization.bookedIntervals.map((interval) => ({
+    startsAt: new Date(interval.startsAt).getTime(),
+    endsAt: new Date(interval.endsAt).getTime(),
+  }));
+  const localDates = new Set<string>();
+
+  for (const interval of availability) {
+    localDates.add(getPragueLocalDate(new Date(interval.startsAt)));
+    localDates.add(getPragueLocalDate(new Date(interval.endsAt - 1)));
+  }
+
+  return [...localDates].flatMap((localDate) => {
+    const nextLocalDate = getNextCalendarDate(localDate);
+    const dayStartsAt = resolvePragueLocalDateTime(localDate, "00:00")?.getTime();
+    const dayEndsAt = nextLocalDate
+      ? resolvePragueLocalDateTime(nextLocalDate, "00:00")?.getTime()
+      : undefined;
+
+    if (dayStartsAt === undefined || dayEndsAt === undefined) return [];
+
+    const dayAvailability = availability.filter(
+      (interval) => interval.startsAt < dayEndsAt && interval.endsAt > dayStartsAt,
+    );
+    const dayBookedBlocks = bookedBlocks.filter(
+      (interval) => interval.startsAt < dayEndsAt && interval.endsAt > dayStartsAt,
+    );
+    const active = shouldApplyAutoLunch({
+      localDate,
+      availability: dayAvailability,
+      bookedBlocks: dayBookedBlocks,
+      globalAutoLunchEnabled: scheduleOptimization.globalAutoLunchEnabled,
+      dayLunchMode: scheduleOptimization.dayLunchModes[localDate] ?? "AUTO",
+    });
+
+    return active
+      ? generateLunchCandidates({ localDate, availability: dayAvailability })
+        .map((candidate) => new Date(candidate.endsAt).toISOString())
+      : [];
+  });
 }
 
 export function filterTimeOptionsForAutoLunch(
