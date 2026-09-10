@@ -8,7 +8,7 @@ Formát je inspirovaný Keep a Changelog.
 
 ### Opraveno
 
-- Veřejný výběr termínu nyní nabídne první čtvrthodinový začátek bezprostředně po automatickém obědě, pokud je pro vybranou službu zachována obědová pauza.
+- Veřejný výběr termínu i samoobslužný přesun rezervace nyní nabídnou první čtvrthodinový začátek bezprostředně po automatickém obědě, pokud je pro vybranou službu zachována obědová pauza.
 
 ## [3.28.1] - 2026-09-08
 

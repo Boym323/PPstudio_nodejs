@@ -94,6 +94,7 @@ export type PublicBookingManagementPageState =
       expiresAt: string;
       cancellationHours: number;
       slots: PublicBookingCatalog["slots"];
+      scheduleOptimization: PublicBookingCatalog["scheduleOptimization"];
     })
   | (BookingManageDetails & {
       status: "invalid" | "expired" | "already_cancelled" | "not_reschedulable";
@@ -336,6 +337,7 @@ export function createBookingManagementApi(
         expiresAt: resolved.token.expiresAt.toISOString(),
         cancellationHours: bookingPolicy.cancellationHours,
         slots: catalog.slots,
+        scheduleOptimization: catalog.scheduleOptimization,
       };
     },
 

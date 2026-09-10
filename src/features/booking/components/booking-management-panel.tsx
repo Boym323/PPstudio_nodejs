@@ -11,7 +11,12 @@ import {
   startPublicBookingCancellationAction,
 } from "@/features/booking/actions/manage-public-booking";
 import type { PublicBookingManagementPageState } from "@/features/booking/lib/booking-management";
-import { buildSlotTimeOptions, groupSlotsByDayPeriod } from "@/features/booking/lib/booking-time-slots";
+import {
+  buildSlotTimeOptions,
+  filterTimeOptionsForAutoLunch,
+  getAutoLunchBoundaryStartCandidates,
+  groupSlotsByDayPeriod,
+} from "@/features/booking/lib/booking-time-slots";
 import type { TimeSlotOption } from "@/features/booking/lib/booking-time-slots";
 import { trackMatomoEvent } from "@/features/analytics/matomo";
 import { cn } from "@/lib/utils";
@@ -273,22 +278,36 @@ export function BookingManagementPanel({
       return [];
     }
 
-    return currentState.slots.flatMap((slot) => {
+    const eligibleSlots = currentState.slots.filter((slot) => {
       if (
         slot.serviceRestrictionMode === "SELECTED"
         && !slot.allowedServiceIds.includes(currentState.serviceId)
       ) {
-        return [];
+        return false;
       }
 
-      return buildSlotTimeOptions(
-        slot,
-        currentState.serviceDurationMinutes,
-        currentState.cleanupBlockMinutes,
-      )
-        .filter((option) => !option.isDisabled)
-        .filter((option) => option.startsAt !== currentState.scheduledStartsAt);
+      return true;
     });
+    const capacity = eligibleSlots.every((slot) => slot.capacity === 1) ? 1 : 2;
+    const autoLunchBoundaryStartCandidates = capacity === 1
+      ? getAutoLunchBoundaryStartCandidates(currentState.scheduleOptimization)
+      : [];
+    const options = eligibleSlots.flatMap((slot) => buildSlotTimeOptions(
+      slot,
+      currentState.serviceDurationMinutes,
+      currentState.cleanupBlockMinutes,
+      autoLunchBoundaryStartCandidates,
+    ));
+    const lunchSafeOptions = filterTimeOptionsForAutoLunch(options, {
+      serviceDurationMinutes: currentState.serviceDurationMinutes,
+      cleanupBlockMinutes: currentState.cleanupBlockMinutes,
+      capacity,
+      scheduleOptimization: currentState.scheduleOptimization,
+    });
+
+    return lunchSafeOptions
+      .filter((option) => !option.isDisabled)
+      .filter((option) => option.startsAt !== currentState.scheduledStartsAt);
   }, [currentState]);
 
   const slotGroups = useMemo(() => {
