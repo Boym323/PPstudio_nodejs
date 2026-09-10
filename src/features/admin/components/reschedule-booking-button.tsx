@@ -12,6 +12,7 @@ import {
   initialRescheduleBookingActionState,
 } from "@/features/admin/actions/reschedule-booking-action-state";
 import { BookingRescheduleTimeSelector } from "./booking-reschedule-time-selector";
+import type { PublicBookingCatalog } from "@/features/booking/lib/booking-public";
 
 type SlotCatalogItem = {
   id: string;
@@ -39,6 +40,7 @@ type RescheduleBookingButtonProps = {
   expectedUpdatedAt: string;
   rescheduleCount: number;
   slots: SlotCatalogItem[];
+  scheduleOptimization: PublicBookingCatalog["scheduleOptimization"];
   variant?: "panel" | "inline";
 };
 
@@ -72,6 +74,7 @@ export function RescheduleBookingButton({
   expectedUpdatedAt,
   rescheduleCount,
   slots,
+  scheduleOptimization,
   variant = "panel",
 }: RescheduleBookingButtonProps) {
   const router = useRouter();
@@ -209,6 +212,7 @@ export function RescheduleBookingButton({
 
                         <BookingRescheduleTimeSelector
                           slots={slots}
+                          scheduleOptimization={scheduleOptimization}
                           serviceId={serviceId}
                           serviceDurationMinutes={serviceDurationMinutes}
                           cleanupBlockMinutes={cleanupBlockMinutes}

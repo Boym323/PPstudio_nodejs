@@ -4,8 +4,11 @@ import { useMemo } from "react";
 
 import {
   buildSlotTimeOptions,
+  filterTimeOptionsForAutoLunch,
+  getAutoLunchBoundaryStartCandidates,
   type TimeSlotOption,
 } from "@/features/booking/lib/booking-time-slots";
+import type { PublicBookingCatalog } from "@/features/booking/lib/booking-public";
 import { resolvePragueLocalDateTime } from "@/features/booking/lib/booking-local-time";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +34,7 @@ type ServiceOption = {
 
 type BookingTimeSelectorProps = {
   slots: SlotCatalogItem[];
+  scheduleOptimization: PublicBookingCatalog["scheduleOptimization"];
   services: ServiceOption[];
   serviceId: string;
   selectionMode: "slot" | "manual";
@@ -84,6 +88,7 @@ function buildManualPreviewStartsAt(dateValue: string, timeValue: string) {
 
 export function BookingTimeSelector({
   slots,
+  scheduleOptimization,
   services,
   serviceId,
   selectionMode,
@@ -106,21 +111,34 @@ export function BookingTimeSelector({
       return [] as TimeSlotOption[];
     }
 
-    return slots.flatMap((slot) => {
+    const eligibleSlots = slots.filter((slot) => {
       if (
         slot.serviceRestrictionMode === "SELECTED"
         && !slot.allowedServiceIds.includes(selectedService.id)
       ) {
-        return [];
+        return false;
       }
 
-      return buildSlotTimeOptions(
-        slot,
-        selectedService.durationMinutes,
-        selectedService.cleanupBlockMinutes,
-      ).filter((option) => !option.isDisabled);
+      return true;
     });
-  }, [selectedService, slots]);
+    const capacity = eligibleSlots.every((slot) => slot.capacity === 1) ? 1 : 2;
+    const autoLunchBoundaryStartCandidates = capacity === 1
+      ? getAutoLunchBoundaryStartCandidates(scheduleOptimization)
+      : [];
+    const options = eligibleSlots.flatMap((slot) => buildSlotTimeOptions(
+      slot,
+      selectedService.durationMinutes,
+      selectedService.cleanupBlockMinutes,
+      autoLunchBoundaryStartCandidates,
+    ));
+
+    return filterTimeOptionsForAutoLunch(options, {
+      serviceDurationMinutes: selectedService.durationMinutes,
+      cleanupBlockMinutes: selectedService.cleanupBlockMinutes,
+      capacity,
+      scheduleOptimization,
+    }).filter((option) => !option.isDisabled);
+  }, [scheduleOptimization, selectedService, slots]);
   const slotGroups = useMemo(() => {
     const grouped = new Map<string, TimeSlotOption[]>();
 

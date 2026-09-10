@@ -79,6 +79,7 @@ export type ReservationsDashboardData = {
       priceFromCzk: number | null;
     }>;
     slots: Awaited<ReturnType<typeof getAdminBookingAvailabilityCatalog>>["slots"];
+    scheduleOptimization: Awaited<ReturnType<typeof getAdminBookingAvailabilityCatalog>>["scheduleOptimization"];
     clients: Array<{
       id: string;
       fullName: string;
@@ -327,7 +328,7 @@ export async function getReservationsData(area: AdminArea, searchParams?: Record
     attention: { pendingCount, needsClosureCount, totalCount: pendingCount + needsClosureCount, href: attentionHref },
     summary: { totalCount, visibleCount: rows.length, emptyState: filters.view, showMoreHref: totalCount > rows.length ? buildReservationsHref(currentPath, baseFilters, { limit: Math.min(filters.limit + reservationLimitStep, reservationLimitMax) }) : null },
     sections: Array.from(sections.values()),
-    manualBooking: { services: bookingCatalog.services.map((service) => ({ id: service.id, categoryName: service.categoryName, name: service.name, durationMinutes: service.durationMinutes, cleanupBlockMinutes: service.cleanupBlockMinutes, priceFromCzk: service.priceFromCzk })), slots: bookingCatalog.slots, clients: [] },
+    manualBooking: { services: bookingCatalog.services.map((service) => ({ id: service.id, categoryName: service.categoryName, name: service.name, durationMinutes: service.durationMinutes, cleanupBlockMinutes: service.cleanupBlockMinutes, priceFromCzk: service.priceFromCzk })), slots: bookingCatalog.slots, scheduleOptimization: bookingCatalog.scheduleOptimization, clients: [] },
   } satisfies ReservationsDashboardData;
 }
 

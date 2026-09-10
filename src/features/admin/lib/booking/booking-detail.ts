@@ -104,6 +104,7 @@ export type AdminBookingDetailData = {
     currentEndsAt: string;
     expectedUpdatedAt: string;
     slots: Awaited<ReturnType<typeof getAdminBookingAvailabilityCatalog>>["slots"];
+    scheduleOptimization: Awaited<ReturnType<typeof getAdminBookingAvailabilityCatalog>>["scheduleOptimization"];
   };
   voucher: {
     paymentSummary: {
@@ -534,6 +535,7 @@ export async function getAdminBookingDetailData(
       currentEndsAt: booking.scheduledEndsAt.toISOString(),
       expectedUpdatedAt: booking.updatedAt.toISOString(),
       slots: bookingCatalog.slots,
+      scheduleOptimization: bookingCatalog.scheduleOptimization,
     },
     voucher: {
       paymentSummary,

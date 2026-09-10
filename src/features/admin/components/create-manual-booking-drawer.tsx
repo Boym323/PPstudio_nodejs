@@ -386,6 +386,7 @@ export function CreateManualBookingDrawer({
                     <div className="border-t border-white/8 pt-7">
                       <BookingTimeSelector
                         slots={data.slots}
+                        scheduleOptimization={data.scheduleOptimization}
                         services={data.services}
                         serviceId={serviceId}
                         selectionMode={selectionMode}

@@ -135,6 +135,7 @@ function BookingDetailHeader({
                 expectedUpdatedAt={data.reschedule.expectedUpdatedAt}
                 rescheduleCount={data.rescheduleCount}
                 slots={data.reschedule.slots}
+                scheduleOptimization={data.reschedule.scheduleOptimization}
                 variant="inline"
               />
             ) : (
@@ -196,6 +197,7 @@ function BookingDetailHeader({
                 expectedUpdatedAt={data.reschedule.expectedUpdatedAt}
                 rescheduleCount={data.rescheduleCount}
                 slots={data.reschedule.slots}
+                scheduleOptimization={data.reschedule.scheduleOptimization}
                 variant="inline"
               />
             ) : (
@@ -262,6 +264,7 @@ function BookingActionPanel({
                 expectedUpdatedAt={data.reschedule.expectedUpdatedAt}
                 rescheduleCount={data.rescheduleCount}
                 slots={data.reschedule.slots}
+                scheduleOptimization={data.reschedule.scheduleOptimization}
               />
             ) : null
           }
