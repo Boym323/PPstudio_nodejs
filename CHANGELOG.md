@@ -6,6 +6,12 @@ Formát je inspirovaný Keep a Changelog.
 
 ## [Unreleased]
 
+## [3.29.0] - 2026-09-10
+
+### Přidáno
+
+- Automatické obědové pauzy nyní optimalizují nabídku termínů a správu rezervací tak, aby respektovaly délku služby a nabízely smysluplné začátky po pauze.
+
 ### Opraveno
 
 - Veřejný i administrativní výběr termínu včetně samoobslužného přesunu rezervace nyní nabídne první čtvrthodinový začátek bezprostředně po automatickém obědě, pokud je pro vybranou službu zachována obědová pauza.
