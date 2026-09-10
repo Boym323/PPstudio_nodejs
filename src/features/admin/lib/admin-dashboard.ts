@@ -656,6 +656,13 @@ export async function getAdminDashboardData(area: AdminArea): Promise<AdminDashb
       where: {
         startsAt: { gte: now },
         status: AvailabilitySlotStatus.DRAFT,
+        // Draft navázaný na aktivní rezervaci je interní ochranný slot po
+        // ručním přesunu, ne návrh volného termínu určený k publikování.
+        bookings: {
+          none: {
+            status: { in: ACTIVE_BOOKING_STATUSES },
+          },
+        },
       },
     }),
   ]);
