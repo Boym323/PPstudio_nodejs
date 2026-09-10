@@ -76,6 +76,29 @@ test("adaptér nevykreslí chráněný interval pod úklidem", () => {
   assert.equal(events.filter((event) => event.extendedProps.type === "protected").length, 0);
 });
 
+test("adaptér neprodlužuje interní draft za čtvrthodinový konec úklidu", () => {
+  const input = week();
+  input.days[0].inactiveBlocks = [{ startMinutes: 645, endMinutes: 765 }];
+  input.days[0].cleanupBlocks = [{ startMinutes: 735, endMinutes: 765 }];
+  input.days[0].intervals = [{
+    id: "draft-with-booking",
+    startCell: 21,
+    endCell: 26,
+    label: "16:45 - 18:45",
+    status: "inactive",
+    bookingCount: 1,
+    canEdit: false,
+    detail: "Interní výjimka pro přesun rezervace",
+  }];
+
+  const protectedEvents = plannerWeekToFullCalendarEvents(input)
+    .filter((event) => event.extendedProps.type === "protected");
+
+  assert.deepEqual(protectedEvents.map((event) => [event.start, event.end]), [
+    ["2026-07-13T14:45:00.000Z", "2026-07-13T16:15:00.000Z"],
+  ]);
+});
+
 test("UTC intervaly zachovají Prague čas v létě, zimě i při obou DST přechodech", () => {
   assert.equal(getCellRangeBounds("2026-07-13", 0, 1).startsAt.toISOString(), "2026-07-13T04:00:00.000Z");
   assert.equal(getCellRangeBounds("2026-01-12", 0, 1).startsAt.toISOString(), "2026-01-12T05:00:00.000Z");

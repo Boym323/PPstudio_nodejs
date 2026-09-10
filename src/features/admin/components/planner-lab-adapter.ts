@@ -70,13 +70,22 @@ export function plannerWeekToFullCalendarEvents(
       className: "planner-lab-event--availability",
       extendedProps: { type: "availability" as const, editable: true, dateKey: day.dateKey, startCell: interval.startCell, endCell: interval.endCell },
     }));
-    const protectedCandidates = day.lockedBlocks.length > 0
-      ? day.lockedBlocks.map((interval, index) => ({
+    const protectedBlocks = [
+      ...day.lockedBlocks.map((interval, index) => ({
         id: `protected:${day.dateKey}:locked-${index}`,
         title: "Chráněný interval",
         startCell: interval.startMinutes / PLANNER_GRID_MINUTES,
         endCell: interval.endMinutes / PLANNER_GRID_MINUTES,
-      }))
+      })),
+      ...day.inactiveBlocks.map((interval, index) => ({
+        id: `protected:${day.dateKey}:inactive-${index}`,
+        title: "Neaktivní interval",
+        startCell: interval.startMinutes / PLANNER_GRID_MINUTES,
+        endCell: interval.endMinutes / PLANNER_GRID_MINUTES,
+      })),
+    ];
+    const protectedCandidates = protectedBlocks.length > 0
+      ? protectedBlocks
       : day.intervals
         .filter((interval) => interval.status === "locked" || interval.status === "inactive")
         .map((interval) => ({

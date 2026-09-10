@@ -9,6 +9,7 @@ Formát je inspirovaný Keep a Changelog.
 ### Opraveno
 
 - Týdenní planner po přesunu rezervace již nezobrazí prázdný archivovaný původní slot jako chráněný interval, takže navazující volný termín lze znovu upravit.
+- Ochranná vrstva interního draftu v planneru nyní respektuje čtvrthodinový konec úklidu a nevykreslí falešný přesah do následující půlhodiny.
 - Přehled administrace už interní draft slot navázaný na aktivní přesunutou rezervaci neoznačuje jako termín čekající na publikování.
 
 ## [3.29.0] - 2026-09-10
