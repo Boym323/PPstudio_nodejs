@@ -6,6 +6,10 @@ Formát je inspirovaný Keep a Changelog.
 
 ## [Unreleased]
 
+### Opraveno
+
+- Týdenní planner po přesunu rezervace již nezobrazí prázdný archivovaný původní slot jako chráněný interval, takže navazující volný termín lze znovu upravit.
+
 ## [3.29.0] - 2026-09-10
 
 ### Přidáno

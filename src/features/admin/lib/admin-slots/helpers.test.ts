@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { intervalToPlannerCells } from "./helpers";
+import { AvailabilitySlotStatus } from "@/generated/prisma/browser";
+
+import { intervalToPlannerCells, isHiddenHistoricalCancelledSlot } from "./helpers";
 
 test("intervalToPlannerCells cover mode blocks every touched half-hour cell", () => {
   const cells = intervalToPlannerCells(
@@ -46,4 +48,11 @@ test("inside mode drops quarter-hour remainder that does not fit full half-hour 
     startCell: 11,
     endCell: 11,
   });
+});
+
+test("archivovaný slot bez rezervace se v planneru nezobrazuje jako chráněný", () => {
+  assert.equal(isHiddenHistoricalCancelledSlot({
+    status: AvailabilitySlotStatus.ARCHIVED,
+    bookings: [],
+  }), true);
 });

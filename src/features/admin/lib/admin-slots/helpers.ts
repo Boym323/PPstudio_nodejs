@@ -154,7 +154,10 @@ export function isHiddenHistoricalCancelledSlot(slot: {
   bookings: Array<{ id: string; status: BookingStatus }>;
 }) {
   return (
-    (slot.status === AvailabilitySlotStatus.ARCHIVED && slot.bookings.length > 0) ||
+    // Archivovaný slot je pouze historická stopa (typicky po přesunu
+    // rezervace). I když už k němu rezervace nepatří, nesmí se v planneru
+    // vykreslit jako překrývající chráněný interval.
+    slot.status === AvailabilitySlotStatus.ARCHIVED ||
     (
       slot.status !== AvailabilitySlotStatus.PUBLISHED &&
       slot.bookings.length > 0 &&
